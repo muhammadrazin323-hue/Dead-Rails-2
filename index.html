@@ -1,0 +1,3433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>IRON & ASH: The Sundown Line — 3D Wild West Train Survival</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Rye&family=Special+Elite&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --west-gold: #d97706;
+      --west-amber: #f59e0b;
+      --west-brass: #b45309;
+      --west-parchment: #f3e5ab;
+      --west-dark: #140f0b;
+      --west-panel: rgba(24, 17, 12, 0.88);
+      --west-border: #78350f;
+    }
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0d0907;
+      font-family: 'Inter', sans-serif;
+      color: #f5ebe0;
+    }
+    .font-western {
+      font-family: 'Rye', serif;
+      letter-spacing: 0.04em;
+    }
+    .font-typewriter {
+      font-family: 'Special Elite', monospace;
+    }
+    #game-canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .western-card {
+      background: linear-gradient(180deg, rgba(32, 22, 15, 0.94) 0%, rgba(18, 12, 8, 0.96) 100%);
+      border: 2px solid #92400e;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(251, 191, 36, 0.2);
+    }
+    .western-btn {
+      background: linear-gradient(180deg, #b45309 0%, #78350f 100%);
+      border: 1px solid #f59e0b;
+      color: #fef3c7;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+      transition: all 0.15s ease;
+    }
+    .western-btn:hover:not(:disabled) {
+      background: linear-gradient(180deg, #d97706 0%, #92400e 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(217, 119, 6, 0.4);
+    }
+    .western-btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+    .western-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .western-btn-secondary {
+      background: rgba(41, 29, 20, 0.9);
+      border: 1px solid #78350f;
+      color: #fde68a;
+      transition: all 0.15s ease;
+    }
+    .western-btn-secondary:hover:not(:disabled) {
+      background: rgba(68, 46, 30, 0.95);
+      border-color: #d97706;
+    }
+    /* Damage & Low Health Vignette */
+    #damage-vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 15;
+      background: radial-gradient(circle, transparent 50%, rgba(185, 28, 28, 0.75) 100%);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    /* Aim Scope / Vignette */
+    #aim-vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 14;
+      background: radial-gradient(circle, transparent 58%, rgba(0, 0, 0, 0.65) 100%);
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    /* Custom scrollbars for modals */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(20, 14, 10, 0.8);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #92400e;
+      border-radius: 3px;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.6)); }
+      50% { filter: drop-shadow(0 0 14px rgba(245, 158, 11, 0.95)); }
+    }
+    .title-glow {
+      animation: pulseGlow 3s infinite;
+    }
+  </style>
+</head>
+<body class="relative select-none overflow-hidden">
+
+  <!-- 3D Viewport Container -->
+  <div id="game-canvas-container"></div>
+
+  <!-- Screen Effects -->
+  <div id="damage-vignette"></div>
+  <div id="aim-vignette"></div>
+
+  <!-- Enemy Overhead Health Bars Layer -->
+  <div id="enemy-bars-layer" class="fixed inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+  <!-- Floating Damage / Cash Numbers Layer -->
+  <div id="floating-text-layer" class="fixed inset-0 pointer-events-none z-20 overflow-hidden"></div>
+
+  <!-- ==================== IN-GAME HUD ==================== -->
+  <div id="hud-overlay" class="fixed inset-0 pointer-events-none z-20 hidden flex-col justify-between p-3 sm:p-4">
+
+    <!-- TOP BAR: Train Status, Distance Progress, Day/Night & Objective -->
+    <div class="flex flex-wrap items-start justify-between gap-2 w-full">
+
+      <!-- Left: Train Status Card -->
+      <div class="western-card rounded-lg px-3 py-2 pointer-events-auto min-w-[250px] sm:min-w-[290px]">
+        <div class="flex items-center justify-between gap-2 mb-1">
+          <div class="flex items-center gap-1.5">
+            <span class="text-amber-400 font-western text-xs sm:text-sm tracking-wider">IRON HORSE #09</span>
+            <span id="hud-train-state-badge" class="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-amber-900/80 text-amber-200 border border-amber-600/50">STOPPED</span>
+          </div>
+          <span id="hud-train-speed" class="text-xs font-mono text-amber-300">0.0 mph</span>
+        </div>
+
+        <!-- ASCII + Visual Train HP Bar requested by prompt -->
+        <div class="text-[11px] font-mono text-amber-100 flex items-center justify-between mb-1">
+          <span id="hud-train-hp-ascii" class="tracking-tight">TRAIN HP: ██████████ 100%</span>
+        </div>
+        <div class="w-full h-2 bg-stone-900 rounded overflow-hidden border border-amber-900/60 mb-2">
+          <div id="hud-train-hp-bar" class="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-200" style="width: 100%"></div>
+        </div>
+
+        <!-- Fuel Bar -->
+        <div class="flex items-center justify-between text-[11px] font-mono text-amber-200 mb-0.5">
+          <span>STEAM FUEL (COAL/OIL)</span>
+          <span id="hud-train-fuel-text">80%</span>
+        </div>
+        <div class="w-full h-2 bg-stone-900 rounded overflow-hidden border border-amber-900/60">
+          <div id="hud-train-fuel-bar" class="h-full bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-400 transition-all duration-200" style="width: 80%"></div>
+        </div>
+
+        <!-- Quick Train Controls Row -->
+        <div class="mt-2 pt-1.5 border-t border-amber-900/50 flex flex-wrap items-center gap-1.5 text-[10px]">
+          <button id="btn-hud-throttle" class="western-btn px-2 py-0.5 rounded font-semibold">Throttle [F]</button>
+          <button id="btn-hud-whistle" class="western-btn-secondary px-2 py-0.5 rounded">Whistle [H]</button>
+          <button id="btn-hud-headlight" class="western-btn-secondary px-2 py-0.5 rounded">Lamp [L]</button>
+          <button id="btn-hud-cam" class="western-btn-secondary px-2 py-0.5 rounded">Cam [V]</button>
+        </div>
+      </div>
+
+      <!-- Center: Journey Progress, Event Banner & Boss Bar -->
+      <div class="flex flex-col items-center flex-1 max-w-md mx-auto">
+        <div class="western-card rounded-lg px-3.5 py-2 w-full">
+          <div class="flex items-center justify-between text-xs mb-1">
+            <span id="hud-time-label" class="font-semibold text-amber-300 flex items-center gap-1">☀️ DAY 1 — 09:00</span>
+            <span id="hud-biome-label" class="text-amber-100/80 font-typewriter text-xs">Sundown Desert</span>
+            <span id="hud-distance-text" class="font-mono font-bold text-amber-400">0m / 3000m</span>
+          </div>
+          <!-- Railway Track Progress Bar -->
+          <div class="relative w-full h-2.5 bg-stone-900 rounded-full overflow-hidden border border-amber-800/80">
+            <div id="hud-distance-bar" class="h-full bg-gradient-to-r from-amber-700 via-amber-500 to-yellow-300 transition-all duration-300" style="width: 0%"></div>
+          </div>
+          <div id="hud-objective-text" class="mt-1 text-[11px] text-amber-200/95 text-center font-medium truncate">
+            Objective: Board the locomotive and pull the Throttle [F] or [E] to travel toward Fort Redemption.
+          </div>
+        </div>
+
+        <!-- Dynamic Event / Alert Banner -->
+        <div id="hud-event-banner" class="hidden mt-2 px-4 py-1.5 rounded-md bg-red-950/90 border border-red-500 text-red-100 text-xs font-bold tracking-wide uppercase shadow-lg text-center">
+          ⚠️ RANDOM EVENT: ZOMBIE AMBUSH AHEAD!
+        </div>
+
+        <!-- Boss Health Bar -->
+        <div id="hud-boss-container" class="hidden mt-2 w-full western-card rounded-lg px-3 py-1.5 border-red-600">
+          <div class="flex items-center justify-between text-xs font-bold text-red-300 mb-1">
+            <span id="hud-boss-name" class="font-western tracking-wider">💀 BRIMSTONE JACK — UNDEAD MARSHALL</span>
+            <span id="hud-boss-hp-text" class="font-mono">1200 / 1200</span>
+          </div>
+          <div class="w-full h-3 bg-stone-950 rounded overflow-hidden border border-red-700">
+            <div id="hud-boss-hp-bar" class="h-full bg-gradient-to-r from-red-800 via-red-600 to-orange-500 transition-all duration-150" style="width: 100%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Money, Score & Utility Buttons -->
+      <div class="western-card rounded-lg px-3 py-2 pointer-events-auto flex flex-col items-end min-w-[165px]">
+        <div class="flex items-center gap-3 mb-1">
+          <div class="text-right">
+            <div class="text-[10px] uppercase text-amber-400/80 font-semibold">Frontier Cash</div>
+            <div id="hud-money-text" class="text-lg font-western text-amber-300 leading-tight">$65</div>
+          </div>
+          <div class="h-7 w-px bg-amber-900/70"></div>
+          <div class="text-right">
+            <div class="text-[10px] uppercase text-amber-400/80 font-semibold">Kills</div>
+            <div id="hud-kills-text" class="text-lg font-mono font-bold text-red-400 leading-tight">0</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 mt-1">
+          <button id="btn-hud-inventory" class="western-btn-secondary px-2 py-1 rounded text-[11px] font-medium">Bag [TAB]</button>
+          <button id="btn-hud-shop" class="western-btn-secondary px-2 py-1 rounded text-[11px] font-medium">Shop [B]</button>
+          <button id="btn-hud-mute" class="western-btn-secondary px-2 py-1 rounded text-[11px] font-medium" title="Toggle Audio">🔊</button>
+          <button id="btn-hud-pause" class="western-btn-secondary px-2 py-1 rounded text-[11px] font-medium">ESC</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- CENTER RETICLE / CROSSHAIR & INTERACTION PROMPT -->
+    <div class="relative flex flex-col items-center justify-center my-auto pointer-events-none">
+      <!-- Crosshair -->
+      <div id="hud-crosshair" class="relative w-8 h-8 flex items-center justify-center transition-transform duration-75">
+        <div class="absolute w-1.5 h-1.5 bg-amber-300 rounded-full shadow"></div>
+        <div id="ch-top" class="absolute w-0.5 h-2.5 bg-amber-400/90 -top-1 transition-all duration-75"></div>
+        <div id="ch-bottom" class="absolute w-0.5 h-2.5 bg-amber-400/90 -bottom-1 transition-all duration-75"></div>
+        <div id="ch-left" class="absolute h-0.5 w-2.5 bg-amber-400/90 -left-1 transition-all duration-75"></div>
+        <div id="ch-right" class="absolute h-0.5 w-2.5 bg-amber-400/90 -right-1 transition-all duration-75"></div>
+      </div>
+      <!-- Hitmarker -->
+      <div id="hud-hitmarker" class="hidden absolute w-6 h-6 pointer-events-none">
+        <div class="absolute inset-0 border-2 border-red-500 rotate-45 scale-75"></div>
+      </div>
+      <!-- Context Interaction Prompt -->
+      <div id="hud-interact-prompt" class="hidden mt-10 px-3.5 py-1.5 rounded-md bg-stone-950/90 border border-amber-500/80 text-amber-200 text-xs sm:text-sm font-medium shadow-lg">
+        Press <span class="px-1.5 py-0.5 bg-amber-800 text-white rounded font-mono font-bold">[E]</span> to Interact
+      </div>
+      <!-- Status Toast Notification -->
+      <div id="hud-toast" class="hidden mt-3 px-3 py-1 rounded bg-amber-950/90 border border-amber-600/70 text-amber-100 text-xs font-medium shadow"></div>
+    </div>
+
+    <!-- BOTTOM BAR: Player Health, Stamina, Equipped Weapon & Hotbar -->
+    <div class="flex flex-wrap items-end justify-between gap-2 w-full">
+
+      <!-- Bottom Left: Player Vitals & Stamina -->
+      <div class="western-card rounded-lg px-3.5 py-2.5 pointer-events-auto min-w-[230px] sm:min-w-[260px]">
+        <div class="flex items-center justify-between text-xs mb-1">
+          <span class="font-bold text-red-300 uppercase tracking-wider">Outlaw Health</span>
+          <span id="hud-player-hp-text" class="font-mono font-bold text-red-200">100 / 100</span>
+        </div>
+        <div class="w-full h-3 bg-stone-900 rounded overflow-hidden border border-red-900/70 mb-2">
+          <div id="hud-player-hp-bar" class="h-full bg-gradient-to-r from-red-700 via-red-500 to-rose-400 transition-all duration-150" style="width: 100%"></div>
+        </div>
+
+        <div class="flex items-center justify-between text-[11px] mb-1">
+          <span class="font-semibold text-sky-300 uppercase tracking-wider">Stamina</span>
+          <span id="hud-player-stamina-text" class="font-mono text-sky-200">100%</span>
+        </div>
+        <div class="w-full h-2 bg-stone-900 rounded overflow-hidden border border-sky-900/70">
+          <div id="hud-player-stamina-bar" class="h-full bg-gradient-to-r from-sky-600 to-cyan-400 transition-all duration-100" style="width: 100%"></div>
+        </div>
+
+        <div class="mt-2 flex items-center justify-between text-[11px] text-amber-200/90">
+          <span id="hud-stance-label">Stance: Standing</span>
+          <button id="btn-hud-heal" class="western-btn-secondary px-2 py-0.5 rounded text-[10px]">Quick Heal [Q]</button>
+        </div>
+      </div>
+
+      <!-- Bottom Center: Weapon Slots 1-5 -->
+      <div class="flex items-center gap-1.5 pointer-events-auto mx-auto">
+        <button data-slot="0" class="weapon-slot-btn western-card rounded-lg px-2.5 py-1.5 flex flex-col items-center min-w-[62px] sm:min-w-[74px] border-amber-500">
+          <span class="text-[10px] font-mono text-amber-400">[1]</span>
+          <span class="text-xs font-bold text-amber-100">Revolver</span>
+          <span id="slot-ammo-0" class="text-[10px] font-mono text-amber-300">6/36</span>
+        </button>
+        <button data-slot="1" class="weapon-slot-btn western-card rounded-lg px-2.5 py-1.5 flex flex-col items-center min-w-[62px] sm:min-w-[74px] opacity-80">
+          <span class="text-[10px] font-mono text-amber-400">[2]</span>
+          <span class="text-xs font-bold text-amber-100">Repeater</span>
+          <span id="slot-ammo-1" class="text-[10px] font-mono text-amber-300">10/30</span>
+        </button>
+        <button data-slot="2" class="weapon-slot-btn western-card rounded-lg px-2.5 py-1.5 flex flex-col items-center min-w-[62px] sm:min-w-[74px] opacity-80">
+          <span class="text-[10px] font-mono text-amber-400">[3]</span>
+          <span class="text-xs font-bold text-amber-100">Shotgun</span>
+          <span id="slot-ammo-2" class="text-[10px] font-mono text-amber-300">2/14</span>
+        </button>
+        <button data-slot="3" class="weapon-slot-btn western-card rounded-lg px-2.5 py-1.5 flex flex-col items-center min-w-[62px] sm:min-w-[74px] opacity-80">
+          <span class="text-[10px] font-mono text-amber-400">[4]</span>
+          <span class="text-xs font-bold text-amber-100">Sharps</span>
+          <span id="slot-ammo-3" class="text-[10px] font-mono text-amber-300">5/15</span>
+        </button>
+        <button data-slot="4" class="weapon-slot-btn western-card rounded-lg px-2.5 py-1.5 flex flex-col items-center min-w-[62px] sm:min-w-[74px] opacity-80">
+          <span class="text-[10px] font-mono text-amber-400">[5]</span>
+          <span class="text-xs font-bold text-amber-100">Bowie</span>
+          <span id="slot-ammo-4" class="text-[10px] font-mono text-emerald-300">Melee</span>
+        </button>
+      </div>
+
+      <!-- Bottom Right: Active Weapon Readout & Touch/Quick Actions -->
+      <div class="western-card rounded-lg px-3.5 py-2.5 pointer-events-auto min-w-[215px] text-right">
+        <div class="flex items-center justify-between gap-2">
+          <span id="hud-weapon-tier" class="px-1.5 py-0.5 rounded bg-amber-900/80 text-[10px] font-mono text-amber-300">LVL 1</span>
+          <span id="hud-weapon-name" class="font-western text-sm text-amber-300">Peacemaker .45</span>
+        </div>
+        <div class="my-1 flex items-baseline justify-end gap-1">
+          <span id="hud-ammo-mag" class="text-2xl font-mono font-extrabold text-amber-100">6</span>
+          <span class="text-sm font-mono text-amber-500">/</span>
+          <span id="hud-ammo-reserve" class="text-sm font-mono text-amber-300">36</span>
+          <span id="hud-reload-badge" class="hidden ml-2 text-xs font-bold text-amber-400 animate-pulse">RELOADING...</span>
+        </div>
+        <div class="flex items-center justify-end gap-1.5 text-[10px]">
+          <button id="btn-hud-shoot" class="western-btn px-2 py-0.5 rounded font-semibold">Fire [LMB]</button>
+          <button id="btn-hud-aim" class="western-btn-secondary px-2 py-0.5 rounded">Aim [RMB]</button>
+          <button id="btn-hud-reload" class="western-btn-secondary px-2 py-0.5 rounded">Reload [R]</button>
+          <button id="btn-hud-interact" class="western-btn-secondary px-2 py-0.5 rounded">Act [E]</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== INVENTORY MODAL (TAB) ==================== -->
+  <div id="inventory-modal" class="fixed inset-0 z-30 hidden items-center justify-center bg-black/75 p-4">
+    <div class="western-card rounded-xl max-w-2xl w-full p-5 max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between border-b border-amber-800/80 pb-3 mb-3">
+        <div>
+          <h2 class="font-western text-xl text-amber-400">SADDLEBAG &amp; INVENTORY</h2>
+          <p class="text-xs text-amber-200/80">Manage collected fuel, medical supplies, scrap, and ammunition. Capacity: <span id="inv-count-text" class="font-bold text-amber-300">0 / 12</span></p>
+        </div>
+        <button id="btn-close-inventory" class="western-btn-secondary px-3 py-1 rounded text-xs font-bold">Close [TAB]</button>
+      </div>
+
+      <!-- Quick Train & Player Resource Summary -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-xs">
+        <div class="bg-stone-900/90 border border-amber-900/60 rounded p-2">
+          <div class="text-amber-400/80 text-[10px] uppercase">Train Fuel</div>
+          <div id="inv-fuel-val" class="font-mono font-bold text-sm text-amber-200">80%</div>
+        </div>
+        <div class="bg-stone-900/90 border border-amber-900/60 rounded p-2">
+          <div class="text-amber-400/80 text-[10px] uppercase">Train Hull HP</div>
+          <div id="inv-hull-val" class="font-mono font-bold text-sm text-emerald-300">100%</div>
+        </div>
+        <div class="bg-stone-900/90 border border-amber-900/60 rounded p-2">
+          <div class="text-amber-400/80 text-[10px] uppercase">Scrap Carried</div>
+          <div id="inv-scrap-val" class="font-mono font-bold text-sm text-amber-200">2 units</div>
+        </div>
+        <div class="bg-stone-900/90 border border-amber-900/60 rounded p-2">
+          <div class="text-amber-400/80 text-[10px] uppercase">Weapon Upgrade</div>
+          <div id="inv-upgrade-val" class="font-mono font-bold text-sm text-amber-300">Tier 1 (+0%)</div>
+        </div>
+      </div>
+
+      <!-- Inventory Items Grid -->
+      <div id="inventory-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 overflow-y-auto pr-1 flex-1 min-h-[200px]"></div>
+
+      <!-- Quick Field Actions -->
+      <div class="mt-4 pt-3 border-t border-amber-800/80 flex flex-wrap items-center justify-between gap-2">
+        <div class="text-xs text-amber-200/80">Tip: Stand near the locomotive firebox or hull to directly stoke fuel or weld armor.</div>
+        <div class="flex items-center gap-2">
+          <button id="btn-inv-refuel-all" class="western-btn px-3 py-1.5 rounded text-xs font-bold">Stoke All Fuel Into Train</button>
+          <button id="btn-inv-repair-all" class="western-btn-secondary px-3 py-1.5 rounded text-xs font-bold">Use Scrap to Repair Train (+25% HP)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TRADING POST SHOP MODAL (B) ==================== -->
+  <div id="shop-modal" class="fixed inset-0 z-30 hidden items-center justify-center bg-black/75 p-4">
+    <div class="western-card rounded-xl max-w-2xl w-full p-5 max-h-[90vh] flex flex-col">
+      <div class="flex items-center justify-between border-b border-amber-800/80 pb-3 mb-3">
+        <div>
+          <h2 class="font-western text-xl text-amber-400">FRONTIER TRADING POST &amp; TELEGRAPH EXPRESS</h2>
+          <p class="text-xs text-amber-200/80">Purchase ammunition, coal fuel, medical supplies, and gunsmith upgrades.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="font-western text-lg text-amber-300">Cash: <span id="shop-money-text">$65</span></span>
+          <button id="btn-close-shop" class="western-btn-secondary px-3 py-1 rounded text-xs font-bold">Close [B]</button>
+        </div>
+      </div>
+
+      <div id="shop-items-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 overflow-y-auto pr-1 flex-1"></div>
+
+      <div class="mt-4 pt-3 border-t border-amber-800/80 flex items-center justify-between text-xs text-amber-200/80">
+        <span>Sell any spare valuables or gold nuggets from your Saddlebag for instant cash.</span>
+        <button id="btn-shop-sell-valuables" class="western-btn px-3 py-1.5 rounded text-xs font-bold">Sell All Valuables in Bag</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MAIN MENU / PAUSE / INSTRUCTIONS / SETTINGS ==================== -->
+  <div id="menu-modal" class="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-4 overflow-y-auto">
+    <div class="western-card rounded-2xl max-w-3xl w-full p-6 sm:p-8 my-auto border-2 border-amber-600/80">
+
+      <!-- Header -->
+      <div class="text-center mb-6">
+        <div class="inline-block px-3 py-0.5 rounded-full bg-amber-950 border border-amber-600/60 text-amber-300 text-xs font-semibold uppercase tracking-widest mb-2">
+          3D Frontier Train Survival
+        </div>
+        <h1 class="font-western text-3xl sm:text-5xl text-amber-400 title-glow tracking-wider">IRON &amp; ASH</h1>
+        <p class="font-typewriter text-sm sm:text-base text-amber-200/90 mt-1">THE SUNDOWN LINE — 3,000 METERS TO FORT REDEMPTION</p>
+      </div>
+
+      <!-- Menu Navigation Tabs -->
+      <div class="flex items-center justify-center gap-2 mb-5 border-b border-amber-800/70 pb-3">
+        <button id="tab-btn-main" class="western-btn px-4 py-1.5 rounded text-xs sm:text-sm font-bold">Play / Mission</button>
+        <button id="tab-btn-instructions" class="western-btn-secondary px-4 py-1.5 rounded text-xs sm:text-sm font-bold">Controls &amp; Guide</button>
+        <button id="tab-btn-settings" class="western-btn-secondary px-4 py-1.5 rounded text-xs sm:text-sm font-bold">Settings</button>
+      </div>
+
+      <!-- TAB 1: MAIN / PLAY -->
+      <div id="menu-tab-main" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div class="bg-stone-900/90 border border-amber-900/70 rounded-lg p-3.5">
+            <div class="font-western text-amber-400 text-sm mb-1">1. STOKE THE IRON HORSE</div>
+            <p class="text-amber-100/85 leading-relaxed">Keep the steam locomotive supplied with Coal &amp; Oil. Pull the throttle inside the cab to steam forward down the frontier railway.</p>
+          </div>
+          <div class="bg-stone-900/90 border border-amber-900/70 rounded-lg p-3.5">
+            <div class="font-western text-amber-400 text-sm mb-1">2. LOOT &amp; EXPLORE</div>
+            <p class="text-amber-100/85 leading-relaxed">Stop at procedural Ghost Towns, Saloons, Sheriff Stations, Mines, and Graveyards to scavenge fuel, ammo, cash, and weapons.</p>
+          </div>
+          <div class="bg-stone-900/90 border border-amber-900/70 rounded-lg p-3.5">
+            <div class="font-western text-amber-400 text-sm mb-1">3. SURVIVE NIGHT &amp; HORDE</div>
+            <p class="text-amber-100/85 leading-relaxed">Fight Walkers, Coyote Runners, Ironclad Brutes, Deadeye Gunslingers, and the Undead Marshall Boss before they wreck your train!</p>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+          <button id="btn-start-game" class="western-btn px-8 py-3 rounded-lg font-western text-lg tracking-wider w-full sm:w-auto">
+            BOARD TRAIN &amp; PLAY
+          </button>
+          <button id="btn-restart-game" class="western-btn-secondary px-6 py-3 rounded-lg font-bold text-sm w-full sm:w-auto hidden">
+            Restart New Run
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB 2: INSTRUCTIONS / CONTROLS -->
+      <div id="menu-tab-instructions" class="hidden space-y-3 text-xs sm:text-sm">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div class="bg-stone-900/90 border border-amber-900/70 rounded-lg p-3.5">
+            <h3 class="font-western text-amber-400 text-sm mb-2">DESKTOP CONTROLS</h3>
+            <ul class="space-y-1 text-amber-100/90 font-mono text-xs">
+              <li><span class="text-amber-400 font-bold">WASD</span> = Move Character</li>
+              <li><span class="text-amber-400 font-bold">SHIFT</span> = Sprint (uses Stamina)</li>
+              <li><span class="text-amber-400 font-bold">SPACE</span> = Jump / Climb Train</li>
+              <li><span class="text-amber-400 font-bold">CTRL / C</span> = Crouch (reduces recoil)</li>
+              <li><span class="text-amber-400 font-bold">Mouse</span> = Rotate Camera (Click viewport to lock)</li>
+              <li><span class="text-amber-400 font-bold">Left Click</span> = Shoot / Melee Attack</li>
+              <li><span class="text-amber-400 font-bold">Right Click</span> = Aim Down Sights (Zoom)</li>
+              <li><span class="text-amber-400 font-bold">R</span> = Reload Weapon</li>
+              <li><span class="text-amber-400 font-bold">E</span> = Interact (Loot / Throttle / Refuel / Repair)</li>
+              <li><span class="text-amber-400 font-bold">1 – 5</span> = Switch Weapons</li>
+              <li><span class="text-amber-400 font-bold">TAB</span> = Open Saddlebag Inventory</li>
+              <li><span class="text-amber-400 font-bold">B</span> = Open Trading Post / Express Shop</li>
+              <li><span class="text-amber-400 font-bold">F / H / L / V</span> = Throttle / Whistle / Lamp / Camera</li>
+              <li><span class="text-amber-400 font-bold">ESC</span> = Pause / Menu</li>
+            </ul>
+          </div>
+          <div class="bg-stone-900/90 border border-amber-900/70 rounded-lg p-3.5 space-y-2">
+            <h3 class="font-western text-amber-400 text-sm mb-1">SURVIVAL HANDBOOK</h3>
+            <p class="text-amber-100/85 text-xs leading-relaxed">
+              <strong class="text-amber-300">Train Operation:</strong> Step onto the locomotive cab and press <kbd class="px-1 bg-amber-900 rounded">E</kbd> on the Throttle Lever (or press <kbd class="px-1 bg-amber-900 rounded">F</kbd>) to start or stop the train. Stopping near towns lets you loot safely without leaving the train behind.
+            </p>
+            <p class="text-amber-100/85 text-xs leading-relaxed">
+              <strong class="text-amber-300">Fuel &amp; Repairs:</strong> Coal Sacks and Oil Barrels add fuel when you interact with the glowing Firebox (<kbd class="px-1 bg-amber-900 rounded">E</kbd>) or click <em>Stoke All Fuel</em> in your inventory. Use Scrap Metal to weld hull damage.
+            </p>
+            <p class="text-amber-100/85 text-xs leading-relaxed">
+              <strong class="text-amber-300">Broken Tracks &amp; Bosses:</strong> Watch the railway ahead! If bandits or fallen rocks barricade the rails, stop the train and clear the barricade (<kbd class="px-1 bg-amber-900 rounded">E</kbd>) before colliding!
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: SETTINGS -->
+      <div id="menu-tab-settings" class="hidden space-y-3 text-xs sm:text-sm">
+        <div class="bg-stone-900/90 border border-amber-900/70 rounded-lg p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold text-amber-200">Camera Perspective</div>
+              <div class="text-xs text-amber-400/80">Switch between Over-the-Shoulder 3rd-Person and 1st-Person</div>
+            </div>
+            <select id="setting-camera-mode" class="bg-stone-950 border border-amber-700 rounded px-3 py-1.5 text-amber-100 text-xs">
+              <option value="third">Third-Person (Default)</option>
+              <option value="first">First-Person</option>
+            </select>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold text-amber-200">Mouse Look Sensitivity</div>
+              <div class="text-xs text-amber-400/80">Adjust camera rotation speed</div>
+            </div>
+            <input id="setting-sensitivity" type="range" min="0.3" max="2.5" step="0.1" value="1.0" class="accent-amber-500 w-36" />
+          </div>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold text-amber-200">Journey Target Distance</div>
+              <div class="text-xs text-amber-400/80">Distance along the railway to reach Fort Redemption</div>
+            </div>
+            <select id="setting-target-distance" class="bg-stone-950 border border-amber-700 rounded px-3 py-1.5 text-amber-100 text-xs">
+              <option value="2000">Short Run (2,000m)</option>
+              <option value="3000" selected>Standard Run (3,000m)</option>
+              <option value="5000">Marathon Run (5,000m)</option>
+            </select>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold text-amber-200">Synthesized Sound Effects</div>
+              <div class="text-xs text-amber-400/80">Web Audio API engine, gunshots, whistle, and desert wind</div>
+            </div>
+            <input id="setting-sound-enabled" type="checkbox" checked class="w-4 h-4 accent-amber-500" />
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== GAME OVER & VICTORY MODAL ==================== -->
+  <div id="endgame-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/85 p-4">
+    <div class="western-card rounded-2xl max-w-lg w-full p-6 sm:p-8 text-center border-2 border-amber-500">
+      <div id="endgame-badge" class="inline-block px-3 py-1 rounded-full bg-red-950 border border-red-500 text-red-200 text-xs font-bold uppercase tracking-widest mb-2">
+        EXPEDITION LOST
+      </div>
+      <h2 id="endgame-title" class="font-western text-3xl sm:text-4xl text-red-400 mb-2">GAME OVER</h2>
+      <p id="endgame-reason" class="text-sm text-amber-100/90 mb-5">The Iron Horse was destroyed by the undead horde in the wastelands.</p>
+
+      <div class="grid grid-cols-3 gap-2 mb-6 text-xs">
+        <div class="bg-stone-900/90 border border-amber-900/70 rounded p-2.5">
+          <div class="text-amber-400/80 uppercase text-[10px]">Distance</div>
+          <div id="endgame-stat-dist" class="font-mono font-bold text-base text-amber-200">0m</div>
+        </div>
+        <div class="bg-stone-900/90 border border-amber-900/70 rounded p-2.5">
+          <div class="text-amber-400/80 uppercase text-[10px]">Zombies Slain</div>
+          <div id="endgame-stat-kills" class="font-mono font-bold text-base text-red-400">0</div>
+        </div>
+        <div class="bg-stone-900/90 border border-amber-900/70 rounded p-2.5">
+          <div class="text-amber-400/80 uppercase text-[10px]">Cash Earned</div>
+          <div id="endgame-stat-cash" class="font-mono font-bold text-base text-emerald-400">$0</div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-center gap-3">
+        <button id="btn-endgame-restart" class="western-btn px-6 py-2.5 rounded-lg font-western text-base">
+          RIDE AGAIN (RESTART)
+        </button>
+        <button id="btn-endgame-menu" class="western-btn-secondary px-4 py-2.5 rounded-lg text-xs font-bold">
+          Main Menu
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== COMPLETE 3D GAME ENGINE SCRIPT ==================== -->
+  <script>
+  (function () {
+    'use strict';
+
+    // =========================================================================
+    // 1. WEB AUDIO API PROCEDURAL SOUND SYNTHESIZER (No external audio files)
+    // =========================================================================
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+        this.lastChugTime = 0;
+        this.lastStepTime = 0;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            this.ctx = new AudioCtx();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      playGunshot(type) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        const duration = type === 'shotgun' ? 0.38 : type === 'sharps' ? 0.42 : type === 'melee' ? 0.14 : 0.24;
+        const bufferSize = Math.floor(this.ctx.sampleRate * duration);
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * (type === 'melee' ? 0.04 : 0.09)));
+        }
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = type === 'melee' ? 'bandpass' : 'lowpass';
+        filter.frequency.setValueAtTime(type === 'shotgun' ? 900 : type === 'sharps' ? 1400 : 1200, now);
+        filter.frequency.exponentialRampToValueAtTime(180, now + duration);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(type === 'melee' ? 0.25 : 0.55, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        noise.start(now);
+
+        if (type !== 'melee') {
+          const osc = this.ctx.createOscillator();
+          const oscGain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(type === 'shotgun' ? 130 : type === 'sharps' ? 190 : 160, now);
+          osc.frequency.exponentialRampToValueAtTime(35, now + 0.16);
+          oscGain.gain.setValueAtTime(0.4, now);
+          oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+          osc.connect(oscGain);
+          oscGain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.17);
+        }
+      }
+
+      playReload() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        [0, 0.14, 0.28].forEach((offset, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(620 + idx * 140, now + offset);
+          gain.gain.setValueAtTime(0.15, now + offset);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.05);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + offset);
+          osc.stop(now + offset + 0.06);
+        });
+      }
+
+      playWhistle() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        [392, 493.88, 587.33].forEach((freq) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(freq, now);
+          osc.frequency.linearRampToValueAtTime(freq * 0.98, now + 0.95);
+          gain.gain.setValueAtTime(0.01, now);
+          gain.gain.linearRampToValueAtTime(0.12, now + 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 1.02);
+        });
+      }
+
+      playChug(speedRatio) {
+        if (!this.enabled || speedRatio <= 0.02) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = performance.now();
+        const interval = Math.max(130, 420 - speedRatio * 270);
+        if (now - this.lastChugTime < interval) return;
+        this.lastChugTime = now;
+
+        const t = this.ctx.currentTime;
+        const bufferSize = Math.floor(this.ctx.sampleRate * 0.09);
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.035));
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(240 + speedRatio * 120, t);
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.11, t);
+        gain.gain.exponentialRampToValueAtTime(0.005, t + 0.085);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        noise.start(t);
+      }
+
+      playFootstep(onTrain) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = performance.now();
+        if (now - this.lastStepTime < 280) return;
+        this.lastStepTime = now;
+
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = onTrain ? 'square' : 'sine';
+        osc.frequency.setValueAtTime(onTrain ? 145 : 95, t);
+        osc.frequency.exponentialRampToValueAtTime(40, t + 0.055);
+        gain.gain.setValueAtTime(0.08, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.065);
+      }
+
+      playLoot(isCash) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(isCash ? 880 : 520, t);
+        osc.frequency.exponentialRampToValueAtTime(isCash ? 1320 : 780, t + 0.12);
+        gain.gain.setValueAtTime(0.16, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.15);
+      }
+
+      playZombieSound(kind) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        const baseFreq = kind === 'brute' ? 75 : kind === 'runner' ? 210 : 120;
+        osc.frequency.setValueAtTime(baseFreq, t);
+        osc.frequency.linearRampToValueAtTime(baseFreq * 0.72, t + 0.25);
+        gain.gain.setValueAtTime(0.12, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.27);
+      }
+    }
+
+    const sfx = new SoundEngine();
+
+    // =========================================================================
+    // 2. WEAPON DEFINITIONS & LOOT TABLE DEFINITIONS
+    // =========================================================================
+    const WEAPONS = [
+      {
+        id: 'revolver',
+        name: 'Peacemaker .45',
+        shortName: 'Revolver',
+        damage: 38,
+        fireRate: 0.32,
+        magSize: 6,
+        mag: 6,
+        reserve: 36,
+        reloadTime: 1.4,
+        range: 110,
+        pellets: 1,
+        spread: 0.015,
+        recoil: 0.035,
+        unlocked: true,
+        color: 0xb45309
+      },
+      {
+        id: 'repeater',
+        name: 'Winchester Repeater',
+        shortName: 'Repeater',
+        damage: 52,
+        fireRate: 0.42,
+        magSize: 10,
+        mag: 10,
+        reserve: 30,
+        reloadTime: 1.8,
+        range: 150,
+        pellets: 1,
+        spread: 0.008,
+        recoil: 0.045,
+        unlocked: true,
+        color: 0x92400e
+      },
+      {
+        id: 'shotgun',
+        name: 'Coach Double-Barrel',
+        shortName: 'Shotgun',
+        damage: 19,
+        fireRate: 0.55,
+        magSize: 2,
+        mag: 2,
+        reserve: 16,
+        reloadTime: 1.6,
+        range: 55,
+        pellets: 8,
+        spread: 0.085,
+        recoil: 0.085,
+        unlocked: true,
+        color: 0x78350f
+      },
+      {
+        id: 'sharps',
+        name: 'Sharps Buffalo Rifle',
+        shortName: 'Sharps',
+        damage: 120,
+        fireRate: 0.85,
+        magSize: 5,
+        mag: 5,
+        reserve: 15,
+        reloadTime: 2.1,
+        range: 220,
+        pellets: 1,
+        spread: 0.002,
+        recoil: 0.075,
+        unlocked: true,
+        color: 0x57534e
+      },
+      {
+        id: 'melee',
+        name: 'Cavalry Bowie Hatchet',
+        shortName: 'Bowie',
+        damage: 48,
+        fireRate: 0.38,
+        magSize: Infinity,
+        mag: Infinity,
+        reserve: Infinity,
+        reloadTime: 0,
+        range: 4.8,
+        pellets: 1,
+        spread: 0,
+        recoil: 0.015,
+        unlocked: true,
+        color: 0xa8a29e
+      }
+    ];
+
+    const LOOT_TYPES = [
+      { type: 'coal', name: 'Anthracite Coal Sack', desc: '+25% Locomotive Steam Fuel', value: 18, fuel: 25, color: 0x292524, badge: 'FUEL' },
+      { type: 'oil', name: 'Refined Kerosene Barrel', desc: '+40% Locomotive Steam Fuel', value: 30, fuel: 40, color: 0xb91c1c, badge: 'FUEL' },
+      { type: 'ammo_pack', name: 'Frontier Ammo Crate', desc: '+18 Revolver, +12 Rifle, +6 Shells', value: 22, color: 0x65a30d, badge: 'AMMO' },
+      { type: 'medkit', name: 'Doc Holliday Medkit', desc: 'Restores +65 Outlaw Health', value: 28, heal: 65, color: 0xdc2626, badge: 'HEAL' },
+      { type: 'rations', name: 'Canned Trail Beans', desc: 'Restores +30 HP & Full Stamina', value: 15, heal: 30, stamina: 100, color: 0xd97706, badge: 'FOOD' },
+      { type: 'scrap', name: 'Boiler Scrap Iron', desc: 'Repairs +25% Train Hull Armor', value: 20, repair: 25, color: 0x78716c, badge: 'REPAIR' },
+      { type: 'gold', name: 'Prospector Gold Bullion', desc: 'Valuable bullion — sell at Shop for $55', value: 55, cash: 55, color: 0xfacc15, badge: 'GOLD' },
+      { type: 'upgrade', name: 'Gunsmith Rifling Kit', desc: 'Permanently boosts all weapon damage +20%', value: 65, upgrade: 1, color: 0x38bdf8, badge: 'UPGRADE' }
+    ];
+
+    const SHOP_CATALOG = [
+      { id: 'buy_coal', name: 'Coal Sack (+30% Train Fuel)', price: 20, desc: 'Directly adds +30% fuel to the locomotive or bag.', action: 'fuel', amount: 30 },
+      { id: 'buy_ammo', name: 'Bandolier Ammo Bundle', price: 25, desc: '+24 Revolver, +16 Repeater, +8 Shotgun, +8 Sharps.', action: 'ammo' },
+      { id: 'buy_medkit', name: 'Surgeon Medkit (+65 HP)', price: 25, desc: 'Restores +65 Health immediately or places in bag.', action: 'medkit' },
+      { id: 'buy_scrap', name: 'Iron Boiler Plates (+35% Train HP)', price: 30, desc: 'Repairs +35% Train Hull HP immediately.', action: 'repair', amount: 35 },
+      { id: 'buy_upgrade', name: 'Custom Gunsmith Bore Upgrade', price: 75, desc: 'Permanently increases all weapon damage by +25%.', action: 'upgrade' },
+      { id: 'buy_turret', name: 'Steam Cab Guard Bell & Armor', price: 90, desc: 'Reinforces train hull (+40% HP) & blasts nearby undead.', action: 'reinforce' }
+    ];
+
+    // =========================================================================
+    // 3. GLOBAL GAME STATE
+    // =========================================================================
+    const state = {
+      running: false,
+      paused: true,
+      gameOver: false,
+      victory: false,
+      cameraMode: 'third',
+      sensitivity: 1.0,
+      targetDistance: 3000,
+      timeOfDay: 9.0,
+      dayCount: 1,
+
+      player: {
+        pos: new THREE.Vector3(0, 2.3, 0),
+        vel: new THREE.Vector3(0, 0, 0),
+        yaw: Math.PI,
+        pitch: -0.08,
+        hp: 100,
+        maxHp: 100,
+        stamina: 100,
+        maxStamina: 100,
+        crouching: false,
+        grounded: true,
+        onTrain: true,
+        aiming: false,
+        personalLamp: true,
+        currentWeapon: 0,
+        weaponTier: 1,
+        reloading: false,
+        reloadTimer: 0,
+        lastShotTime: 0,
+        recoilPitch: 0,
+        money: 65,
+        kills: 0,
+        inventory: [
+          { type: 'coal', name: 'Anthracite Coal Sack', desc: '+25% Locomotive Steam Fuel', value: 18, fuel: 25, badge: 'FUEL' },
+          { type: 'medkit', name: 'Doc Holliday Medkit', desc: 'Restores +65 Outlaw Health', value: 28, heal: 65, badge: 'HEAL' },
+          { type: 'scrap', name: 'Boiler Scrap Iron', desc: 'Repairs +25% Train Hull Armor', value: 20, repair: 25, badge: 'REPAIR' }
+        ],
+        maxInventory: 12
+      },
+
+      train: {
+        z: 0,
+        speed: 0,
+        maxSpeed: 13.5,
+        throttle: false,
+        fuel: 80,
+        maxFuel: 100,
+        hp: 100,
+        maxHp: 100,
+        headlightOn: true,
+        blockedByBarricade: false,
+        activeBarricadeZ: null
+      },
+
+      chunks: [],
+      nextChunkIndex: 0,
+      obstacles: [],
+      lootItems: [],
+      enemies: [],
+      bullets: [],
+      particles: [],
+      activeBoss: null,
+      bossSpawnedMid: false,
+      bossSpawnedFinal: false,
+      currentBiomeName: 'Sundown Outpost',
+      lastRandomEventDist: 180
+    };
+
+    // =========================================================================
+    // 4. THREE.JS SCENE, CAMERA, LIGHTS & SKY SETUP
+    // =========================================================================
+    const container = document.getElementById('game-canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xd99b66);
+    scene.fog = new THREE.FogExp2(0xd99b66, 0.0055);
+
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.15, 420);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    const hemiLight = new THREE.HemisphereLight(0xffedd5, 0x451a03, 0.65);
+    scene.add(hemiLight);
+
+    const sunLight = new THREE.DirectionalLight(0xfef08a, 1.15);
+    sunLight.position.set(60, 95, 40);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 1024;
+    sunLight.shadow.mapSize.height = 1024;
+    sunLight.shadow.camera.near = 10;
+    sunLight.shadow.camera.far = 240;
+    const d = 85;
+    sunLight.shadow.camera.left = -d;
+    sunLight.shadow.camera.right = d;
+    sunLight.shadow.camera.top = d;
+    sunLight.shadow.camera.bottom = -d;
+    scene.add(sunLight);
+    scene.add(sunLight.target);
+
+    const skyGroup = new THREE.Group();
+    scene.add(skyGroup);
+
+    const sunMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(9, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xfde047 })
+    );
+    skyGroup.add(sunMesh);
+
+    const moonMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(6.5, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xe2e8f0 })
+    );
+    skyGroup.add(moonMesh);
+
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 450;
+    const starPositions = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI * 0.46;
+      const r = 260;
+      starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      starPositions[i * 3 + 1] = r * Math.cos(phi) + 20;
+      starPositions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0xf8fafc, size: 1.6, transparent: true, opacity: 0 });
+    const starField = new THREE.Points(starGeo, starMat);
+    skyGroup.add(starField);
+
+    const MATS = {
+      sand: new THREE.MeshLambertMaterial({ color: 0xc2854c }),
+      canyon: new THREE.MeshLambertMaterial({ color: 0x8c4a27 }),
+      ballast: new THREE.MeshLambertMaterial({ color: 0x57534e }),
+      woodDark: new THREE.MeshLambertMaterial({ color: 0x451a03 }),
+      woodWarm: new THREE.MeshLambertMaterial({ color: 0x78350f }),
+      woodLight: new THREE.MeshLambertMaterial({ color: 0x9a5b25 }),
+      ironDark: new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.5, metalness: 0.7 }),
+      ironRust: new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 0.6, metalness: 0.5 }),
+      brass: new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.8 }),
+      crimson: new THREE.MeshLambertMaterial({ color: 0x7f1d1d }),
+      coal: new THREE.MeshLambertMaterial({ color: 0x0c0a09 }),
+      fireGlow: new THREE.MeshBasicMaterial({ color: 0xff5500 }),
+      cactus: new THREE.MeshLambertMaterial({ color: 0x3f6212 }),
+      stone: new THREE.MeshLambertMaterial({ color: 0x78716c }),
+      bone: new THREE.MeshLambertMaterial({ color: 0xd6d3d1 }),
+      zombieSkin: new THREE.MeshLambertMaterial({ color: 0x4d7c0f }),
+      runnerSkin: new THREE.MeshLambertMaterial({ color: 0x7f1d1d }),
+      bruteSkin: new THREE.MeshLambertMaterial({ color: 0x365314 }),
+      bossSkin: new THREE.MeshLambertMaterial({ color: 0x1e1b4b })
+    };
+
+    // =========================================================================
+    // 5. BUILD THE 3D STEAM TRAIN ("THE IRON HORSE #09")
+    // =========================================================================
+    const trainGroup = new THREE.Group();
+    scene.add(trainGroup);
+    const trainWheels = [];
+
+    function buildSteamTrain() {
+      const chassis = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.5, 25), MATS.ironDark);
+      chassis.position.set(0, 1.1, 1.5);
+      chassis.castShadow = true;
+      chassis.receiveShadow = true;
+      trainGroup.add(chassis);
+
+      const boiler = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 1.45, 7.8, 16), MATS.ironDark);
+      boiler.rotation.x = Math.PI / 2;
+      boiler.position.set(0, 2.75, -5.8);
+      boiler.castShadow = true;
+      trainGroup.add(boiler);
+
+      [-8.5, -6.0, -3.5].forEach((bz) => {
+        const band = new THREE.Mesh(new THREE.CylinderGeometry(1.49, 1.49, 0.22, 16), MATS.brass);
+        band.rotation.x = Math.PI / 2;
+        band.position.set(0, 2.75, bz);
+        trainGroup.add(band);
+      });
+
+      const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.38, 2.1, 12), MATS.ironDark);
+      stack.position.set(0, 4.6, -8.3);
+      trainGroup.add(stack);
+
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(0.75, 12, 12), MATS.brass);
+      dome.position.set(0, 4.15, -5.2);
+      trainGroup.add(dome);
+
+      const catcher = new THREE.Mesh(new THREE.ConeGeometry(2.2, 2.2, 4), MATS.crimson);
+      catcher.rotation.x = -Math.PI / 2;
+      catcher.rotation.z = Math.PI / 4;
+      catcher.position.set(0, 0.95, -10.8);
+      trainGroup.add(catcher);
+
+      const lampBox = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.7), MATS.brass);
+      lampBox.position.set(0, 3.6, -9.8);
+      trainGroup.add(lampBox);
+
+      const lampLens = new THREE.Mesh(
+        new THREE.CircleGeometry(0.32, 12),
+        new THREE.MeshBasicMaterial({ color: 0xfef08a })
+      );
+      lampLens.rotation.y = Math.PI;
+      lampLens.position.set(0, 3.6, -10.16);
+      trainGroup.add(lampLens);
+      trainGroup.userData.lampLens = lampLens;
+
+      const headlight = new THREE.SpotLight(0xfef08a, 2.6, 135, Math.PI / 4.2, 0.45, 1.1);
+      headlight.position.set(0, 3.8, -10.2);
+      const headTarget = new THREE.Object3D();
+      headTarget.position.set(0, 0.5, -65);
+      trainGroup.add(headTarget);
+      headlight.target = headTarget;
+      trainGroup.add(headlight);
+      trainGroup.userData.headlight = headlight;
+
+      const cabFloor = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.2, 5.0), MATS.woodDark);
+      cabFloor.position.set(0, 1.4, 0.4);
+      trainGroup.add(cabFloor);
+
+      const bulkhead = new THREE.Mesh(new THREE.BoxGeometry(4.4, 3.1, 0.35), MATS.ironRust);
+      bulkhead.position.set(0, 2.95, -1.9);
+      trainGroup.add(bulkhead);
+
+      const fireboxFrame = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.2, 0.45), MATS.ironDark);
+      fireboxFrame.position.set(0, 2.15, -1.75);
+      trainGroup.add(fireboxFrame);
+
+      const fireboxGlow = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.85, 0.48), MATS.fireGlow);
+      fireboxGlow.position.set(0, 2.15, -1.72);
+      trainGroup.add(fireboxGlow);
+      trainGroup.userData.fireboxGlow = fireboxGlow;
+
+      const fireboxLight = new THREE.PointLight(0xff6600, 1.4, 9);
+      fireboxLight.position.set(0, 2.3, -0.9);
+      trainGroup.add(fireboxLight);
+      trainGroup.userData.fireboxLight = fireboxLight;
+
+      const throttleBase = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.9, 0.4), MATS.ironDark);
+      throttleBase.position.set(1.25, 2.4, -1.55);
+      trainGroup.add(throttleBase);
+
+      const throttleLever = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.95, 8), MATS.brass);
+      throttleLever.position.set(1.25, 2.95, -1.5);
+      throttleLever.rotation.x = 0.35;
+      trainGroup.add(throttleLever);
+      trainGroup.userData.throttleLever = throttleLever;
+
+      const pillarGeo = new THREE.BoxGeometry(0.25, 3.2, 0.25);
+      [
+        [-2.15, 3.0, -1.8],
+        [2.15, 3.0, -1.8],
+        [-2.15, 3.0, 2.6],
+        [2.15, 3.0, 2.6]
+      ].forEach(([px, py, pz]) => {
+        const p = new THREE.Mesh(pillarGeo, MATS.woodWarm);
+        p.position.set(px, py, pz);
+        trainGroup.add(p);
+      });
+
+      const cabRoof = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.25, 5.2), MATS.crimson);
+      cabRoof.position.set(0, 4.65, 0.4);
+      cabRoof.castShadow = true;
+      trainGroup.add(cabRoof);
+
+      const flatbedFloor = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.22, 11.2), MATS.woodWarm);
+      flatbedFloor.position.set(0, 1.4, 8.4);
+      flatbedFloor.receiveShadow = true;
+      trainGroup.add(flatbedFloor);
+
+      const coalBin = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.1, 2.1), MATS.coal);
+      coalBin.position.set(0, 1.95, 4.2);
+      trainGroup.add(coalBin);
+
+      const railWallGeo = new THREE.BoxGeometry(0.22, 1.05, 4.2);
+      const leftWallRear = new THREE.Mesh(railWallGeo, MATS.woodDark);
+      leftWallRear.position.set(-2.18, 1.95, 11.2);
+      trainGroup.add(leftWallRear);
+
+      const rightWallRear = new THREE.Mesh(railWallGeo, MATS.woodDark);
+      rightWallRear.position.set(2.18, 1.95, 11.2);
+      trainGroup.add(rightWallRear);
+
+      const rearGate = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.95, 0.22), MATS.woodDark);
+      rearGate.position.set(0, 1.9, 13.8);
+      trainGroup.add(rearGate);
+
+      const cabLantern = new THREE.PointLight(0xf59e0b, 1.1, 14);
+      cabLantern.position.set(0, 4.2, 1.2);
+      trainGroup.add(cabLantern);
+
+      const wheelGeo = new THREE.CylinderGeometry(0.68, 0.68, 0.28, 14);
+      const spokeGeo = new THREE.BoxGeometry(1.15, 0.14, 0.32);
+      const wheelZPositions = [-8.2, -5.4, -2.6, 4.5, 11.2];
+      wheelZPositions.forEach((wz) => {
+        [-2.25, 2.25].forEach((wx) => {
+          const wheelPivot = new THREE.Group();
+          wheelPivot.position.set(wx, 0.68, wz);
+
+          const tire = new THREE.Mesh(wheelGeo, MATS.ironRust);
+          tire.rotation.z = Math.PI / 2;
+          wheelPivot.add(tire);
+
+          const spoke = new THREE.Mesh(spokeGeo, MATS.brass);
+          spoke.rotation.z = Math.PI / 2;
+          wheelPivot.add(spoke);
+
+          trainGroup.add(wheelPivot);
+          trainWheels.push(wheelPivot);
+        });
+      });
+    }
+
+    buildSteamTrain();
+
+    // =========================================================================
+    // 6. BUILD ORIGINAL WILD WEST PLAYER CHARACTER & 3D WEAPON MODELS
+    // =========================================================================
+    const playerGroup = new THREE.Group();
+    scene.add(playerGroup);
+
+    const playerModel = {
+      torso: null,
+      head: null,
+      hat: null,
+      leftLeg: null,
+      rightLeg: null,
+      leftArm: null,
+      rightArm: null,
+      gunSocket: null,
+      muzzleFlash: null,
+      muzzleLight: null,
+      personalLight: null
+    };
+
+    function buildPlayerCharacter() {
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1.05, 0.42), MATS.woodDark);
+      torso.position.set(0, 1.15, 0);
+      torso.castShadow = true;
+      playerGroup.add(torso);
+      playerModel.torso = torso;
+
+      const bandana = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.16, 0.46), MATS.crimson);
+      bandana.position.set(0, 1.68, 0);
+      playerGroup.add(bandana);
+
+      const head = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.46, 0.46),
+        new THREE.MeshLambertMaterial({ color: 0xe6b89c })
+      );
+      head.position.set(0, 1.95, 0);
+      head.castShadow = true;
+      playerGroup.add(head);
+      playerModel.head = head;
+
+      const hatGroup = new THREE.Group();
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.07, 14), MATS.woodWarm);
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.33, 0.32, 12), MATS.woodWarm);
+      crown.position.y = 0.16;
+      hatGroup.add(brim);
+      hatGroup.add(crown);
+      hatGroup.position.set(0, 2.2, 0);
+      playerGroup.add(hatGroup);
+      playerModel.hat = hatGroup;
+
+      const legGeo = new THREE.BoxGeometry(0.28, 0.72, 0.3);
+      const leftLeg = new THREE.Mesh(legGeo, MATS.ironRust);
+      leftLeg.position.set(-0.2, 0.36, 0);
+      playerGroup.add(leftLeg);
+      playerModel.leftLeg = leftLeg;
+
+      const rightLeg = new THREE.Mesh(legGeo, MATS.ironRust);
+      rightLeg.position.set(0.2, 0.36, 0);
+      playerGroup.add(rightLeg);
+      playerModel.rightLeg = rightLeg;
+
+      const armGeo = new THREE.BoxGeometry(0.24, 0.7, 0.24);
+      const leftArm = new THREE.Mesh(armGeo, MATS.woodWarm);
+      leftArm.position.set(-0.52, 1.25, 0);
+      playerGroup.add(leftArm);
+      playerModel.leftArm = leftArm;
+
+      const rightArm = new THREE.Group();
+      rightArm.position.set(0.52, 1.42, 0);
+      const rightArmMesh = new THREE.Mesh(armGeo, MATS.woodWarm);
+      rightArmMesh.position.set(0, -0.2, 0.22);
+      rightArmMesh.rotation.x = Math.PI / 2.2;
+      rightArm.add(rightArmMesh);
+
+      const gunSocket = new THREE.Group();
+      gunSocket.position.set(0, -0.15, 0.58);
+      rightArm.add(gunSocket);
+      playerModel.gunSocket = gunSocket;
+
+      const flashMesh = new THREE.Mesh(
+        new THREE.ConeGeometry(0.18, 0.45, 8),
+        new THREE.MeshBasicMaterial({ color: 0xfef08a })
+      );
+      flashMesh.rotation.x = Math.PI / 2;
+      flashMesh.position.set(0, 0.06, 0.55);
+      flashMesh.visible = false;
+      gunSocket.add(flashMesh);
+      playerModel.muzzleFlash = flashMesh;
+
+      const muzzleLight = new THREE.PointLight(0xfde047, 0, 12);
+      muzzleLight.position.set(0, 0.1, 0.6);
+      gunSocket.add(muzzleLight);
+      playerModel.muzzleLight = muzzleLight;
+
+      playerGroup.add(rightArm);
+      playerModel.rightArm = rightArm;
+
+      const personalLight = new THREE.PointLight(0xf59e0b, 0.9, 18);
+      personalLight.position.set(0, 1.6, 0.4);
+      playerGroup.add(personalLight);
+      playerModel.personalLight = personalLight;
+    }
+
+    buildPlayerCharacter();
+
+    function updatePlayerWeaponModel() {
+      const socket = playerModel.gunSocket;
+      for (let i = socket.children.length - 1; i >= 0; i--) {
+        const ch = socket.children[i];
+        if (ch !== playerModel.muzzleFlash && ch !== playerModel.muzzleLight) {
+          socket.remove(ch);
+        }
+      }
+
+      const w = WEAPONS[state.player.currentWeapon];
+      const wGroup = new THREE.Group();
+
+      if (w.id === 'revolver') {
+        const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.09, 0.42), MATS.ironDark);
+        barrel.position.z = 0.18;
+        const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.1), MATS.woodWarm);
+        grip.position.set(0, -0.1, -0.02);
+        wGroup.add(barrel, grip);
+      } else if (w.id === 'repeater' || w.id === 'sharps') {
+        const len = w.id === 'sharps' ? 0.95 : 0.78;
+        const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, len), MATS.ironDark);
+        barrel.position.z = len * 0.42;
+        const stock = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.35), MATS.woodWarm);
+        stock.position.set(0, -0.04, -0.12);
+        wGroup.add(barrel, stock);
+      } else if (w.id === 'shotgun') {
+        const barrelL = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.68, 8), MATS.ironDark);
+        barrelL.rotation.x = Math.PI / 2;
+        barrelL.position.set(-0.04, 0, 0.25);
+        const barrelR = barrelL.clone();
+        barrelR.position.x = 0.04;
+        const stock = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.32), MATS.woodDark);
+        stock.position.set(0, -0.04, -0.1);
+        wGroup.add(barrelL, barrelR, stock);
+      } else if (w.id === 'melee') {
+        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.35, 8), MATS.woodWarm);
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.38, 0.14), MATS.bone);
+        blade.position.set(0, 0.25, 0.04);
+        wGroup.add(handle, blade);
+      }
+
+      socket.add(wGroup);
+    }
+
+    updatePlayerWeaponModel();
+
+    // =========================================================================
+    // 7. PROCEDURAL WILD WEST WORLD & CHUNK GENERATOR
+    // =========================================================================
+    const CHUNK_LENGTH = 150;
+    const BIOME_TYPES = [
+      { id: 'desert', name: 'Scorched Badlands' },
+      { id: 'town', name: 'Abandoned Frontier Town' },
+      { id: 'mine', name: 'Silver Vein Ghost Mine' },
+      { id: 'cemetery', name: 'Boot Hill Graveyard' },
+      { id: 'trading_post', name: 'Sundown Trading Post' },
+      { id: 'bandit_camp', name: 'Outlaw Canyon Camp' },
+      { id: 'farm', name: 'Infested Homestead & Barn' }
+    ];
+
+    function addObstacleBox(chunkObj, minX, maxX, minZ, maxZ, maxY = 5) {
+      const box = { minX, maxX, minZ, maxZ, maxY };
+      chunkObj.obstacles.push(box);
+      state.obstacles.push(box);
+    }
+
+    function createEnterableBuilding(chunkObj, cx, cz, width, depth, height, wallMat, roofMat, signText, facingSignZ) {
+      const bGroup = new THREE.Group();
+      bGroup.position.set(cx, 0, cz);
+      const t = 0.35;
+      const doorWidth = 2.4;
+      const sidePieceW = (width - doorWidth) / 2;
+
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(width, 0.2, depth), MATS.woodDark);
+      floor.position.y = 0.1;
+      floor.receiveShadow = true;
+      bGroup.add(floor);
+
+      const backZ = facingSignZ > 0 ? -depth / 2 : depth / 2;
+      const frontZ = facingSignZ > 0 ? depth / 2 : -depth / 2;
+
+      const backWall = new THREE.Mesh(new THREE.BoxGeometry(width, height, t), wallMat);
+      backWall.position.set(0, height / 2, backZ);
+      backWall.castShadow = true;
+      backWall.receiveShadow = true;
+      bGroup.add(backWall);
+      addObstacleBox(chunkObj, cx - width / 2, cx + width / 2, cz + backZ - t, cz + backZ + t, height);
+
+      const leftWall = new THREE.Mesh(new THREE.BoxGeometry(t, height, depth), wallMat);
+      leftWall.position.set(-width / 2, height / 2, 0);
+      leftWall.castShadow = true;
+      bGroup.add(leftWall);
+      addObstacleBox(chunkObj, cx - width / 2 - t, cx - width / 2 + t, cz - depth / 2, cz + depth / 2, height);
+
+      const rightWall = new THREE.Mesh(new THREE.BoxGeometry(t, height, depth), wallMat);
+      rightWall.position.set(width / 2, height / 2, 0);
+      rightWall.castShadow = true;
+      bGroup.add(rightWall);
+      addObstacleBox(chunkObj, cx + width / 2 - t, cx + width / 2 + t, cz - depth / 2, cz + depth / 2, height);
+
+      const frontL = new THREE.Mesh(new THREE.BoxGeometry(sidePieceW, height, t), wallMat);
+      frontL.position.set(-width / 2 + sidePieceW / 2, height / 2, frontZ);
+      frontL.castShadow = true;
+      bGroup.add(frontL);
+      addObstacleBox(chunkObj, cx - width / 2, cx - doorWidth / 2, cz + frontZ - t, cz + frontZ + t, height);
+
+      const frontR = new THREE.Mesh(new THREE.BoxGeometry(sidePieceW, height, t), wallMat);
+      frontR.position.set(width / 2 - sidePieceW / 2, height / 2, frontZ);
+      frontR.castShadow = true;
+      bGroup.add(frontR);
+      addObstacleBox(chunkObj, cx + doorWidth / 2, cx + width / 2, cz + frontZ - t, cz + frontZ + t, height);
+
+      const header = new THREE.Mesh(new THREE.BoxGeometry(doorWidth, height - 2.7, t), wallMat);
+      header.position.set(0, 2.7 + (height - 2.7) / 2, frontZ);
+      bGroup.add(header);
+
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(width + 0.6, 0.35, depth + 1.4), roofMat);
+      roof.position.set(0, height + 0.15, 0);
+      roof.castShadow = true;
+      bGroup.add(roof);
+
+      const facade = new THREE.Mesh(new THREE.BoxGeometry(width, 1.5, 0.25), roofMat);
+      facade.position.set(0, height + 0.85, frontZ);
+      bGroup.add(facade);
+
+      const table = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.85, 1.1), MATS.woodWarm);
+      table.position.set(0, 0.5, backZ * 0.55);
+      bGroup.add(table);
+
+      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), MATS.fireGlow);
+      lantern.position.set(0, height - 0.35, 0);
+      bGroup.add(lantern);
+
+      chunkObj.group.add(bGroup);
+
+      const count = 2 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < count; i++) {
+        const lx = cx + (Math.random() - 0.5) * (width - 2.2);
+        const lz = cz + (Math.random() - 0.5) * (depth - 2.2);
+        spawnLootItem(chunkObj, lx, 0.55, lz);
+      }
+
+      return { cx, cz, signText };
+    }
+
+    function spawnLootItem(chunkObj, x, y, z, forcedType) {
+      const def = forcedType
+        ? LOOT_TYPES.find((l) => l.type === forcedType) || LOOT_TYPES[0]
+        : LOOT_TYPES[Math.floor(Math.random() * LOOT_TYPES.length)];
+
+      const meshGroup = new THREE.Group();
+      meshGroup.position.set(x, y, z);
+
+      let mesh;
+      if (def.type === 'coal' || def.type === 'oil') {
+        mesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.38, 0.42, 0.72, 10),
+          new THREE.MeshLambertMaterial({ color: def.color })
+        );
+      } else if (def.type === 'gold') {
+        mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.55, 0.28, 0.35),
+          new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8, roughness: 0.2 })
+        );
+      } else {
+        mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.62, 0.48, 0.52),
+          new THREE.MeshLambertMaterial({ color: def.color })
+        );
+      }
+      mesh.castShadow = true;
+      meshGroup.add(mesh);
+
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.45, 0.58, 12),
+        new THREE.MeshBasicMaterial({ color: 0xfbbf24, side: THREE.DoubleSide })
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = -0.22;
+      meshGroup.add(ring);
+
+      chunkObj.group.add(meshGroup);
+      const itemObj = {
+        id: 'loot_' + Math.random().toString(36).slice(2),
+        def: Object.assign({}, def),
+        mesh: meshGroup,
+        chunkIndex: chunkObj.index,
+        collected: false
+      };
+      chunkObj.loot.push(itemObj);
+      state.lootItems.push(itemObj);
+    }
+
+    function generateChunk(index) {
+      const zStart = -index * CHUNK_LENGTH;
+      const zCenter = zStart - CHUNK_LENGTH / 2;
+      const distMeters = index * CHUNK_LENGTH;
+
+      const chunkGroup = new THREE.Group();
+      scene.add(chunkGroup);
+
+      let biome = BIOME_TYPES[0];
+      const isFinalChunk = distMeters >= state.targetDistance && distMeters < state.targetDistance + CHUNK_LENGTH;
+
+      if (index === 0) {
+        biome = { id: 'trading_post', name: 'Sundown Starting Depot' };
+      } else if (isFinalChunk) {
+        biome = { id: 'fort_redemption', name: 'Fort Redemption (Final Sanctuary)' };
+      } else if (index % 4 === 2) {
+        biome = { id: 'town', name: 'Deadwood Ghost Town' };
+      } else if (index % 5 === 0) {
+        biome = { id: 'trading_post', name: 'Telegraph Supply Outpost' };
+      } else {
+        biome = BIOME_TYPES[1 + (index * 3 + Math.floor(Math.random() * 5)) % (BIOME_TYPES.length - 1)];
+      }
+
+      const chunkObj = {
+        index,
+        zStart,
+        zEnd: zStart - CHUNK_LENGTH,
+        biome,
+        group: chunkGroup,
+        obstacles: [],
+        loot: [],
+        barricade: null
+      };
+
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(340, CHUNK_LENGTH), MATS.sand);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.set(0, 0, zCenter);
+      ground.receiveShadow = true;
+      chunkGroup.add(ground);
+
+      const ballast = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.16, CHUNK_LENGTH), MATS.ballast);
+      ballast.position.set(0, 0.08, zCenter);
+      ballast.receiveShadow = true;
+      chunkGroup.add(ballast);
+
+      const railGeo = new THREE.BoxGeometry(0.16, 0.22, CHUNK_LENGTH);
+      const leftRail = new THREE.Mesh(railGeo, MATS.ironRust);
+      leftRail.position.set(-1.95, 0.24, zCenter);
+      const rightRail = new THREE.Mesh(railGeo, MATS.ironRust);
+      rightRail.position.set(1.95, 0.24, zCenter);
+      chunkGroup.add(leftRail, rightRail);
+
+      const tieGeo = new THREE.BoxGeometry(4.8, 0.14, 0.42);
+      for (let tz = zStart - 2; tz > zStart - CHUNK_LENGTH; tz -= 3.0) {
+        const tie = new THREE.Mesh(tieGeo, MATS.woodDark);
+        tie.position.set(0, 0.15, tz);
+        chunkGroup.add(tie);
+      }
+
+      for (let m = 0; m < 6; m++) {
+        const side = m % 2 === 0 ? -1 : 1;
+        const mx = side * (68 + Math.random() * 65);
+        const mz = zStart - Math.random() * CHUNK_LENGTH;
+        const mh = 18 + Math.random() * 32;
+        const mw = 22 + Math.random() * 26;
+        const mesa = new THREE.Mesh(new THREE.ConeGeometry(mw, mh, 6), MATS.canyon);
+        mesa.position.set(mx, mh / 2 - 2, mz);
+        chunkGroup.add(mesa);
+      }
+
+      for (let c = 0; c < 14; c++) {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const cx = side * (16 + Math.random() * 48);
+        const cz = zStart - Math.random() * CHUNK_LENGTH;
+        const h = 2.6 + Math.random() * 2.2;
+        const cactus = new THREE.Group();
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, h, 7), MATS.cactus);
+        trunk.position.y = h / 2;
+        trunk.castShadow = true;
+        cactus.add(trunk);
+
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.22, 1.3, 6), MATS.cactus);
+        arm.position.set(0.45, h * 0.62, 0);
+        arm.rotation.z = -Math.PI / 4;
+        cactus.add(arm);
+
+        cactus.position.set(cx, 0, cz);
+        chunkGroup.add(cactus);
+      }
+
+      if (biome.id === 'town') {
+        createEnterableBuilding(chunkObj, -17, zCenter + 26, 11, 10, 4.8, MATS.woodWarm, MATS.crimson, 'RED DOG SALOON', 1);
+        createEnterableBuilding(chunkObj, 17, zCenter + 22, 10, 9, 4.4, MATS.woodLight, MATS.woodDark, 'SHERIFF OFFICE', -1);
+        createEnterableBuilding(chunkObj, -17, zCenter - 12, 10, 9, 4.4, MATS.woodLight, MATS.woodWarm, 'GENERAL STORE', 1);
+        createEnterableBuilding(chunkObj, 18, zCenter - 16, 11, 11, 5.5, MATS.woodDark, MATS.crimson, 'OLD BARN', -1);
+
+        for (let z = 0; z < 6; z++) {
+          const zx = (z % 2 === 0 ? -1 : 1) * (10 + Math.random() * 14);
+          const zz = zCenter + (Math.random() - 0.5) * 70;
+          spawnEnemy(zx, zz, z === 0 ? 'brute' : z === 1 ? 'gunslinger' : z % 2 === 0 ? 'runner' : 'walker');
+        }
+      } else if (biome.id === 'trading_post') {
+        const platform = new THREE.Mesh(new THREE.BoxGeometry(10, 0.9, 18), MATS.woodWarm);
+        platform.position.set(-10, 0.45, zCenter);
+        chunkGroup.add(platform);
+
+        createEnterableBuilding(chunkObj, -16, zCenter, 10, 12, 4.5, MATS.woodWarm, MATS.brass, 'TRADING POST [B]', 1);
+        spawnLootItem(chunkObj, -8.5, 1.15, zCenter + 4, 'coal');
+        spawnLootItem(chunkObj, -8.5, 1.15, zCenter - 4, 'ammo_pack');
+      } else if (biome.id === 'mine') {
+        const shaft = new THREE.Mesh(new THREE.BoxGeometry(12, 6, 10), MATS.stone);
+        shaft.position.set(20, 3, zCenter);
+        chunkGroup.add(shaft);
+        addObstacleBox(chunkObj, 14, 26, zCenter - 5, zCenter + 5, 6);
+
+        createEnterableBuilding(chunkObj, -16, zCenter + 10, 9, 9, 4.2, MATS.woodDark, MATS.ironRust, 'ASSAY OFFICE', 1);
+        spawnLootItem(chunkObj, 11, 0.5, zCenter - 2, 'coal');
+        spawnLootItem(chunkObj, 11, 0.5, zCenter + 3, 'gold');
+        spawnLootItem(chunkObj, 12, 0.5, zCenter + 6, 'scrap');
+
+        for (let z = 0; z < 4; z++) {
+          spawnEnemy(12 + Math.random() * 8, zCenter + (Math.random() - 0.5) * 40, z === 0 ? 'brute' : 'walker');
+        }
+      } else if (biome.id === 'cemetery') {
+        createEnterableBuilding(chunkObj, -18, zCenter, 10, 12, 5.4, MATS.stone, MATS.woodDark, 'ST. JUDE CHAPEL', 1);
+        for (let g = 0; g < 12; g++) {
+          const stone = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.4, 0.25), MATS.stone);
+          stone.position.set(11 + (g % 3) * 3.5, 0.7, zCenter - 15 + Math.floor(g / 3) * 7);
+          chunkGroup.add(stone);
+        }
+        spawnLootItem(chunkObj, 14, 0.5, zCenter, 'gold');
+        spawnLootItem(chunkObj, 15, 0.5, zCenter + 5, 'medkit');
+        for (let z = 0; z < 5; z++) {
+          spawnEnemy(11 + Math.random() * 10, zCenter + (Math.random() - 0.5) * 35, z % 2 === 0 ? 'runner' : 'walker');
+        }
+      } else if (biome.id === 'bandit_camp' || biome.id === 'farm') {
+        createEnterableBuilding(chunkObj, 16, zCenter, 11, 10, 4.6, MATS.woodWarm, MATS.crimson, 'OUTLAW HIDEOUT', -1);
+        spawnLootItem(chunkObj, -10, 0.5, zCenter, 'oil');
+        spawnLootItem(chunkObj, -11, 0.5, zCenter + 4, 'ammo_pack');
+
+        for (let z = 0; z < 4; z++) {
+          spawnEnemy((z % 2 === 0 ? -1 : 1) * 13, zCenter + (Math.random() - 0.5) * 45, z < 2 ? 'gunslinger' : 'runner');
+        }
+
+        if (index > 2 && index % 4 === 1) {
+          const barricadeGroup = new THREE.Group();
+          barricadeGroup.position.set(0, 0.9, zCenter - 20);
+          const beam1 = new THREE.Mesh(new THREE.BoxGeometry(5.5, 1.2, 1.2), MATS.woodDark);
+          const beam2 = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.5, 0.9), MATS.crimson);
+          beam2.position.y = 0.8;
+          barricadeGroup.add(beam1, beam2);
+          chunkGroup.add(barricadeGroup);
+          chunkObj.barricade = {
+            z: zCenter - 20,
+            mesh: barricadeGroup,
+            cleared: false
+          };
+        }
+      } else if (biome.id === 'fort_redemption') {
+        const gateL = new THREE.Mesh(new THREE.BoxGeometry(14, 9, 4), MATS.stone);
+        gateL.position.set(-11, 4.5, zCenter);
+        const gateR = new THREE.Mesh(new THREE.BoxGeometry(14, 9, 4), MATS.stone);
+        gateR.position.set(11, 4.5, zCenter);
+        const arch = new THREE.Mesh(new THREE.BoxGeometry(12, 2.5, 4.4), MATS.brass);
+        arch.position.set(0, 8.2, zCenter);
+        chunkGroup.add(gateL, gateR, arch);
+      } else {
+        if (Math.random() < 0.75) {
+          spawnLootItem(chunkObj, (Math.random() < 0.5 ? -1 : 1) * 8, 0.5, zCenter, 'coal');
+        }
+        if (index > 0) {
+          spawnEnemy((Math.random() < 0.5 ? -1 : 1) * 14, zCenter, 'walker');
+        }
+      }
+
+      state.chunks.push(chunkObj);
+      return chunkObj;
+    }
+
+    // =========================================================================
+    // 8. ZOMBIE TYPES, BOSS & OBSTACLE-AWARE AI
+    // =========================================================================
+    const ENEMY_ARCHETYPES = {
+      walker: {
+        name: 'Dust Walker',
+        hp: 80,
+        speed: 4.1,
+        damage: 11,
+        attackRange: 2.3,
+        scale: 1.0,
+        reward: 12,
+        mat: MATS.zombieSkin,
+        ranged: false
+      },
+      runner: {
+        name: 'Coyote Runner',
+        hp: 52,
+        speed: 7.4,
+        damage: 9,
+        attackRange: 2.2,
+        scale: 0.92,
+        reward: 16,
+        mat: MATS.runnerSkin,
+        ranged: false
+      },
+      brute: {
+        name: 'Ironclad Brute',
+        hp: 250,
+        speed: 2.9,
+        damage: 24,
+        attackRange: 2.9,
+        scale: 1.48,
+        reward: 35,
+        mat: MATS.bruteSkin,
+        ranged: false
+      },
+      gunslinger: {
+        name: 'Deadeye Revenant',
+        hp: 95,
+        speed: 3.8,
+        damage: 14,
+        attackRange: 34.0,
+        scale: 1.05,
+        reward: 25,
+        mat: MATS.woodDark,
+        ranged: true
+      },
+      boss: {
+        name: 'Brimstone Jack (Undead Marshall)',
+        hp: 1200,
+        speed: 4.3,
+        damage: 32,
+        attackRange: 4.0,
+        scale: 2.2,
+        reward: 250,
+        mat: MATS.bossSkin,
+        ranged: true,
+        isBoss: true
+      }
+    };
+
+    const enemyBarsLayer = document.getElementById('enemy-bars-layer');
+
+    function spawnEnemy(x, z, kind = 'walker') {
+      const arch = ENEMY_ARCHETYPES[kind] || ENEMY_ARCHETYPES.walker;
+      const group = new THREE.Group();
+      group.position.set(x, 0, z);
+      group.scale.setScalar(arch.scale);
+
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1.1, 0.45), arch.mat);
+      torso.position.y = 1.15;
+      torso.castShadow = true;
+      group.add(torso);
+
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), arch.mat);
+      head.position.y = 1.98;
+      group.add(head);
+
+      const eyeMat = new THREE.MeshBasicMaterial({ color: kind === 'boss' ? 0xfacc15 : 0xef4444 });
+      const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.08, 0.06), eyeMat);
+      eyeL.position.set(-0.12, 2.02, 0.25);
+      const eyeR = eyeL.clone();
+      eyeR.position.x = 0.12;
+      group.add(eyeL, eyeR);
+
+      if (kind === 'gunslinger' || kind === 'boss') {
+        const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.08, 12), MATS.coal);
+        brim.position.y = 2.26;
+        group.add(brim);
+      } else if (kind === 'brute') {
+        const armor = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.35, 0.62), MATS.ironRust);
+        armor.position.y = 1.62;
+        group.add(armor);
+      }
+
+      const armGeo = new THREE.BoxGeometry(0.24, 0.24, 0.75);
+      const armL = new THREE.Mesh(armGeo, arch.mat);
+      armL.position.set(-0.5, 1.45, 0.32);
+      const armR = armL.clone();
+      armR.position.x = 0.5;
+      group.add(armL, armR);
+
+      const legGeo = new THREE.BoxGeometry(0.28, 0.68, 0.28);
+      const legL = new THREE.Mesh(legGeo, MATS.ironDark);
+      legL.position.set(-0.2, 0.34, 0);
+      const legR = legL.clone();
+      legR.position.x = 0.2;
+      group.add(legL, legR);
+
+      scene.add(group);
+
+      const barEl = document.createElement('div');
+      barEl.className = 'absolute hidden pointer-events-none -translate-x-1/2 -translate-y-full';
+      barEl.innerHTML = `
+        <div class="px-1.5 py-0.5 rounded bg-black/80 border border-amber-900/80 text-center">
+          <div class="text-[9px] font-bold text-amber-200 whitespace-nowrap">${arch.name}</div>
+          <div class="w-14 h-1.5 bg-stone-900 rounded overflow-hidden mt-0.5">
+            <div class="enemy-hp-fill h-full bg-red-500" style="width:100%"></div>
+          </div>
+        </div>
+      `;
+      enemyBarsLayer.appendChild(barEl);
+
+      const enemy = {
+        id: 'en_' + Math.random().toString(36).slice(2),
+        kind,
+        arch,
+        group,
+        torso,
+        head,
+        legL,
+        legR,
+        hp: arch.hp,
+        maxHp: arch.hp,
+        lastAttackTime: 0,
+        lastShotTime: 0,
+        barEl,
+        barFillEl: barEl.querySelector('.enemy-hp-fill'),
+        animPhase: Math.random() * Math.PI * 2
+      };
+
+      if (arch.isBoss) {
+        state.activeBoss = enemy;
+        document.getElementById('hud-boss-container').classList.remove('hidden');
+      }
+
+      state.enemies.push(enemy);
+      return enemy;
+    }
+
+    function collidesWithObstacle(x, z, radius = 0.55) {
+      for (let i = 0; i < state.obstacles.length; i++) {
+        const b = state.obstacles[i];
+        if (x + radius > b.minX && x - radius < b.maxX && z + radius > b.minZ && z - radius < b.maxZ) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // =========================================================================
+    // 9. INPUT HANDLING (KEYBOARD, MOUSE POINTER LOCK + DRAG FALLBACK)
+    // =========================================================================
+    const keys = {};
+    let isPointerLocked = false;
+    let isMouseDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    window.addEventListener('keydown', (e) => {
+      keys[e.code] = true;
+
+      if (e.code === 'Escape') {
+        togglePauseMenu();
+        return;
+      }
+      if (state.paused || state.gameOver || state.victory) return;
+
+      if (e.code === 'Tab' || e.code === 'KeyI') {
+        e.preventDefault();
+        toggleInventoryModal();
+      } else if (e.code === 'KeyB') {
+        toggleShopModal();
+      } else if (e.code === 'KeyR') {
+        triggerReload();
+      } else if (e.code === 'KeyE') {
+        handleContextInteract();
+      } else if (e.code === 'KeyF') {
+        toggleTrainThrottle();
+      } else if (e.code === 'KeyH') {
+        sfx.playWhistle();
+        showToast('🚂 Choo-Choo! Steam Whistle blown — nearby zombies alerted!');
+      } else if (e.code === 'KeyL') {
+        state.train.headlightOn = !state.train.headlightOn;
+        state.player.personalLamp = state.train.headlightOn;
+        showToast(state.train.headlightOn ? '🔦 Train Headlight & Lantern ON' : '🔦 Train Headlight & Lantern OFF');
+      } else if (e.code === 'KeyV') {
+        state.cameraMode = state.cameraMode === 'third' ? 'first' : 'third';
+        document.getElementById('setting-camera-mode').value = state.cameraMode;
+        showToast(`📷 Camera: ${state.cameraMode === 'third' ? 'Third-Person' : 'First-Person'}`);
+      } else if (e.code === 'KeyQ') {
+        useQuickHeal();
+      } else if (e.code === 'ControlLeft' || e.code === 'ControlRight' || e.code === 'KeyC') {
+        state.player.crouching = !state.player.crouching;
+      } else if (e.code === 'Digit1') selectWeapon(0);
+      else if (e.code === 'Digit2') selectWeapon(1);
+      else if (e.code === 'Digit3') selectWeapon(2);
+      else if (e.code === 'Digit4') selectWeapon(3);
+      else if (e.code === 'Digit5') selectWeapon(4);
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      isPointerLocked = document.pointerLockElement === renderer.domElement;
+    });
+
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      if (state.paused || state.gameOver || state.victory) return;
+      sfx.init();
+
+      if (e.button === 2) {
+        state.player.aiming = true;
+        document.getElementById('aim-vignette').style.opacity = '1';
+        return;
+      }
+
+      if (e.button === 0) {
+        if (!isPointerLocked && renderer.domElement.requestPointerLock) {
+          try {
+            renderer.domElement.requestPointerLock();
+          } catch (_) {}
+        }
+        isMouseDragging = true;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        fireCurrentWeapon();
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) isMouseDragging = false;
+      if (e.button === 2) {
+        state.player.aiming = false;
+        document.getElementById('aim-vignette').style.opacity = '0';
+      }
+    });
+
+    window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    window.addEventListener('mousemove', (e) => {
+      if (state.paused || state.gameOver || state.victory) return;
+      const sens = 0.0024 * state.sensitivity * (state.player.aiming ? 0.6 : 1.0);
+      if (isPointerLocked) {
+        state.player.yaw -= e.movementX * sens;
+        state.player.pitch = Math.max(-1.15, Math.min(1.05, state.player.pitch - e.movementY * sens));
+      } else if (isMouseDragging) {
+        const dx = e.clientX - lastMouseX;
+        const dy = e.clientY - lastMouseY;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        state.player.yaw -= dx * sens * 1.4;
+        state.player.pitch = Math.max(-1.15, Math.min(1.05, state.player.pitch - dy * sens * 1.4));
+      }
+    });
+
+    // =========================================================================
+    // 10. SHOOTING, RELOADING, MELEE & HIT DETECTION
+    // =========================================================================
+    function selectWeapon(index) {
+      if (index < 0 || index >= WEAPONS.length) return;
+      state.player.currentWeapon = index;
+      state.player.reloading = false;
+      updatePlayerWeaponModel();
+      updateWeaponHUD();
+    }
+
+    function triggerReload() {
+      const w = WEAPONS[state.player.currentWeapon];
+      if (w.id === 'melee' || state.player.reloading) return;
+      if (w.mag >= w.magSize || w.reserve <= 0) return;
+      state.player.reloading = true;
+      state.player.reloadTimer = w.reloadTime;
+      sfx.playReload();
+      updateWeaponHUD();
+    }
+
+    function fireCurrentWeapon() {
+      if (state.paused || state.gameOver || state.victory) return;
+      if (!document.getElementById('inventory-modal').classList.contains('hidden')) return;
+      if (!document.getElementById('shop-modal').classList.contains('hidden')) return;
+
+      const now = performance.now() / 1000;
+      const w = WEAPONS[state.player.currentWeapon];
+      if (state.player.reloading) return;
+      if (now - state.player.lastShotTime < w.fireRate) return;
+
+      if (w.id !== 'melee') {
+        if (w.mag <= 0) {
+          triggerReload();
+          return;
+        }
+        w.mag--;
+      }
+
+      state.player.lastShotTime = now;
+      sfx.playGunshot(w.id);
+
+      const recoilFactor = state.player.crouching ? 0.6 : 1.0;
+      state.player.recoilPitch = Math.min(0.22, state.player.recoilPitch + w.recoil * recoilFactor);
+
+      if (w.id !== 'melee') {
+        playerModel.muzzleFlash.visible = true;
+        playerModel.muzzleLight.intensity = 2.8;
+        setTimeout(() => {
+          playerModel.muzzleFlash.visible = false;
+          playerModel.muzzleLight.intensity = 0;
+        }, 55);
+      } else {
+        playerModel.rightArm.rotation.x = -0.85;
+        setTimeout(() => {
+          playerModel.rightArm.rotation.x = 0;
+        }, 160);
+      }
+
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+      const origin = camera.position.clone();
+
+      const dmgMultiplier = 1 + (state.player.weaponTier - 1) * 0.22;
+
+      for (let p = 0; p < w.pellets; p++) {
+        const spreadScale = state.player.aiming ? w.spread * 0.35 : w.spread;
+        const dir = forward.clone();
+        dir.x += (Math.random() - 0.5) * spreadScale;
+        dir.y += (Math.random() - 0.5) * spreadScale;
+        dir.z += (Math.random() - 0.5) * spreadScale;
+        dir.normalize();
+
+        let closestEnemy = null;
+        let closestDist = w.range + 4;
+        let isHeadshot = false;
+
+        for (let i = 0; i < state.enemies.length; i++) {
+          const en = state.enemies[i];
+          const enPos = en.group.position.clone();
+          enPos.y += 1.25 * en.arch.scale;
+
+          const toEnemy = enPos.clone().sub(origin);
+          const proj = toEnemy.dot(dir);
+          if (proj < 0 || proj > closestDist) continue;
+
+          const closestPoint = origin.clone().addScaledVector(dir, proj);
+          const hitRadius = (w.id === 'melee' ? 1.45 : 0.85) * en.arch.scale;
+          const distSq = closestPoint.distanceToSquared(enPos);
+
+          if (distSq <= hitRadius * hitRadius) {
+            closestDist = proj;
+            closestEnemy = en;
+            isHeadshot = closestPoint.y > en.group.position.y + 1.65 * en.arch.scale;
+          }
+        }
+
+        if (closestEnemy) {
+          const finalDmg = Math.round(w.damage * dmgMultiplier * (isHeadshot ? 1.65 : 1.0));
+          damageEnemy(closestEnemy, finalDmg, isHeadshot);
+          spawnBloodParticles(
+            closestEnemy.group.position.x,
+            closestEnemy.group.position.y + 1.3 * closestEnemy.arch.scale,
+            closestEnemy.group.position.z
+          );
+        }
+      }
+
+      if (w.id !== 'melee' && w.mag === 0 && w.reserve > 0) {
+        setTimeout(() => triggerReload(), 220);
+      }
+
+      updateWeaponHUD();
+    }
+
+    function damageEnemy(enemy, dmg, isHeadshot) {
+      enemy.hp -= dmg;
+      showHitmarker();
+      spawnFloatingText(
+        enemy.group.position.clone().add(new THREE.Vector3(0, 2.3 * enemy.arch.scale, 0)),
+        `${isHeadshot ? 'CRIT ' : ''}-${dmg}`,
+        isHeadshot ? '#facc15' : '#f87171'
+      );
+
+      if (enemy.hp <= 0) {
+        killEnemy(enemy);
+      }
+    }
+
+    function killEnemy(enemy) {
+      state.player.kills++;
+      const bounty = enemy.arch.reward;
+      state.player.money += bounty;
+      sfx.playLoot(true);
+
+      spawnFloatingText(
+        enemy.group.position.clone().add(new THREE.Vector3(0, 2.6 * enemy.arch.scale, 0)),
+        `+$${bounty}`,
+        '#34d399'
+      );
+
+      if (enemy.arch.isBoss) {
+        state.activeBoss = null;
+        document.getElementById('hud-boss-container').classList.add('hidden');
+        showEventBanner('🏆 BOSS DEFEATED: BRIMSTONE JACK SLAIN! (+$250 & GOLD)');
+        if (state.chunks.length > 0) {
+          const ch = state.chunks[state.chunks.length - 1];
+          spawnLootItem(ch, enemy.group.position.x, 0.5, enemy.group.position.z, 'upgrade');
+          spawnLootItem(ch, enemy.group.position.x + 1.2, 0.5, enemy.group.position.z, 'gold');
+        }
+      } else if (Math.random() < 0.35 && state.chunks.length > 0) {
+        const ch = state.chunks[state.chunks.length - 1];
+        spawnLootItem(ch, enemy.group.position.x, 0.45, enemy.group.position.z);
+      }
+
+      scene.remove(enemy.group);
+      if (enemy.barEl && enemy.barEl.parentNode) {
+        enemy.barEl.parentNode.removeChild(enemy.barEl);
+      }
+      const idx = state.enemies.indexOf(enemy);
+      if (idx !== -1) state.enemies.splice(idx, 1);
+
+      updateTopHUD();
+    }
+
+    // =========================================================================
+    // 11. INTERACTION, LOOT PICKUP, REFUELING, REPAIR & SHOP
+    // =========================================================================
+    function getNearestContextAction() {
+      const p = state.player.pos;
+      const tz = state.train.z;
+
+      for (let i = 0; i < state.chunks.length; i++) {
+        const b = state.chunks[i].barricade;
+        if (b && !b.cleared) {
+          const dist = Math.hypot(p.x, p.z - b.z);
+          if (dist < 6.5) {
+            return { type: 'barricade', label: 'Clear Bandit Track Barricade', target: b };
+          }
+        }
+      }
+
+      let nearestLoot = null;
+      let nearestLootDist = 3.8;
+      for (let i = 0; i < state.lootItems.length; i++) {
+        const it = state.lootItems[i];
+        if (it.collected) continue;
+        const d = p.distanceTo(it.mesh.position);
+        if (d < nearestLootDist) {
+          nearestLootDist = d;
+          nearestLoot = it;
+        }
+      }
+      if (nearestLoot) {
+        return {
+          type: 'loot',
+          label: `Pick Up ${nearestLoot.def.name} (${nearestLoot.def.badge})`,
+          target: nearestLoot
+        };
+      }
+
+      const distToCab = Math.hypot(p.x, p.z - (tz - 0.8));
+      if (distToCab < 4.2) {
+        const hasFuelItem = state.player.inventory.some((i) => i.fuel);
+        if (hasFuelItem && state.train.fuel < 99) {
+          return { type: 'refuel', label: 'Stoke Locomotive Firebox (+Fuel) or Pull Throttle [F]' };
+        }
+        const hasScrap = state.player.inventory.some((i) => i.repair);
+        if (hasScrap && state.train.hp < 99) {
+          return { type: 'repair', label: 'Weld Train Hull with Scrap (+25% HP) or Pull Throttle [F]' };
+        }
+        return {
+          type: 'throttle',
+          label: state.train.throttle ? 'Stop Locomotive Throttle' : 'Engage Locomotive Steam Throttle'
+        };
+      }
+
+      return null;
+    }
+
+    function handleContextInteract() {
+      const ctx = getNearestContextAction();
+      if (!ctx) {
+        if (state.player.onTrain) {
+          toggleTrainThrottle();
+        }
+        return;
+      }
+
+      if (ctx.type === 'barricade') {
+        ctx.target.cleared = true;
+        ctx.target.mesh.visible = false;
+        state.train.blockedByBarricade = false;
+        sfx.playLoot(false);
+        showToast('🛤️ Railway Barricade cleared! The Iron Horse can proceed.');
+      } else if (ctx.type === 'loot') {
+        pickupLootItem(ctx.target);
+      } else if (ctx.type === 'refuel') {
+        stokeFuelFromBag();
+      } else if (ctx.type === 'repair') {
+        repairTrainFromBag();
+      } else if (ctx.type === 'throttle') {
+        toggleTrainThrottle();
+      }
+    }
+
+    function pickupLootItem(itemObj) {
+      const def = itemObj.def;
+      if (def.type === 'ammo_pack') {
+        WEAPONS[0].reserve += 18;
+        WEAPONS[1].reserve += 12;
+        WEAPONS[2].reserve += 6;
+        WEAPONS[3].reserve += 5;
+        itemObj.collected = true;
+        itemObj.mesh.visible = false;
+        sfx.playLoot(false);
+        showToast('Picked up Frontier Ammo Crate (+Ammo for all firearms)');
+        updateWeaponHUD();
+        return;
+      }
+
+      if (state.player.inventory.length >= state.player.maxInventory) {
+        showToast('⚠️ Saddlebag is full (12/12)! Press [TAB] to use or drop items.');
+        return;
+      }
+
+      itemObj.collected = true;
+      itemObj.mesh.visible = false;
+      state.player.inventory.push(Object.assign({}, def));
+      sfx.playLoot(def.type === 'gold');
+      showToast(`🎒 Stored ${def.name} in Saddlebag (${state.player.inventory.length}/${state.player.maxInventory})`);
+      renderInventoryModal();
+    }
+
+    function toggleTrainThrottle() {
+      if (state.train.fuel <= 0) {
+        state.train.throttle = false;
+        showToast('⚠️ Out of Steam Fuel! Scavenge Coal Sacks or Oil Barrels to stoke the firebox.');
+        return;
+      }
+      state.train.throttle = !state.train.throttle;
+      sfx.playWhistle();
+      showToast(state.train.throttle ? '🚂 Steam Throttle ENGAGED — Rolling forward!' : '🛑 Steam Brakes APPLIED — Stopping train.');
+    }
+
+    function stokeFuelFromBag() {
+      const idx = state.player.inventory.findIndex((i) => i.fuel);
+      if (idx === -1) {
+        showToast('No Coal or Oil in Saddlebag!');
+        return;
+      }
+      const item = state.player.inventory.splice(idx, 1)[0];
+      state.train.fuel = Math.min(state.train.maxFuel, state.train.fuel + item.fuel);
+      sfx.playLoot(false);
+      showToast(`🔥 Stoked ${item.name} into firebox! Train Fuel: ${Math.round(state.train.fuel)}%`);
+      renderInventoryModal();
+      updateTopHUD();
+    }
+
+    function repairTrainFromBag() {
+      const idx = state.player.inventory.findIndex((i) => i.repair);
+      if (idx === -1) {
+        showToast('No Boiler Scrap Iron in Saddlebag!');
+        return;
+      }
+      const item = state.player.inventory.splice(idx, 1)[0];
+      state.train.hp = Math.min(state.train.maxHp, state.train.hp + item.repair);
+      sfx.playLoot(false);
+      showToast(`🔧 Welded hull armor with ${item.name}! Train HP: ${Math.round(state.train.hp)}%`);
+      renderInventoryModal();
+      updateTopHUD();
+    }
+
+    function useQuickHeal() {
+      const idx = state.player.inventory.findIndex((i) => i.heal);
+      if (idx === -1) {
+        showToast('No Medkits or Trail Rations in Saddlebag!');
+        return;
+      }
+      useInventoryItem(idx);
+    }
+
+    function useInventoryItem(index) {
+      const item = state.player.inventory[index];
+      if (!item) return;
+
+      if (item.heal) {
+        state.player.hp = Math.min(state.player.maxHp, state.player.hp + item.heal);
+        if (item.stamina) state.player.stamina = state.player.maxStamina;
+        state.player.inventory.splice(index, 1);
+        sfx.playLoot(false);
+        showToast(`💊 Used ${item.name} (+${item.heal} HP)`);
+      } else if (item.fuel) {
+        state.train.fuel = Math.min(state.train.maxFuel, state.train.fuel + item.fuel);
+        state.player.inventory.splice(index, 1);
+        sfx.playLoot(false);
+        showToast(`🔥 Stoked ${item.name} (+${item.fuel}% Train Fuel)`);
+      } else if (item.repair) {
+        state.train.hp = Math.min(state.train.maxHp, state.train.hp + item.repair);
+        state.player.inventory.splice(index, 1);
+        sfx.playLoot(false);
+        showToast(`🔧 Repaired Train Hull (+${item.repair}% HP)`);
+      } else if (item.upgrade) {
+        state.player.weaponTier++;
+        state.player.inventory.splice(index, 1);
+        sfx.playLoot(true);
+        showToast(`⚡ Upgraded Firearms to Tier ${state.player.weaponTier}!`);
+      } else if (item.cash) {
+        state.player.money += item.cash;
+        state.player.inventory.splice(index, 1);
+        sfx.playLoot(true);
+        showToast(`💰 Cashed in ${item.name} for +$${item.cash}!`);
+      }
+
+      renderInventoryModal();
+      updateTopHUD();
+      updateWeaponHUD();
+    }
+
+    function dropInventoryItem(index) {
+      const item = state.player.inventory[index];
+      if (!item) return;
+      state.player.inventory.splice(index, 1);
+      if (state.chunks.length > 0) {
+        const ch = state.chunks[state.chunks.length - 1];
+        spawnLootItem(ch, state.player.pos.x + 0.8, 0.5, state.player.pos.z + 0.8, item.type);
+      }
+      showToast(`Dropped ${item.name}`);
+      renderInventoryModal();
+    }
+
+    // =========================================================================
+    // 12. PARTICLES (TRAIN SMOKE, BLOOD SPLATTER, FLOATING NUMBERS)
+    // =========================================================================
+    function spawnSmokeParticle() {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.45 + Math.random() * 0.35, 8, 8),
+        new THREE.MeshLambertMaterial({ color: 0x57534e, transparent: true, opacity: 0.65 })
+      );
+      mesh.position.set(
+        (Math.random() - 0.5) * 0.3,
+        5.5,
+        state.train.z - 8.3 + (Math.random() - 0.5) * 0.3
+      );
+      scene.add(mesh);
+      state.particles.push({
+        mesh,
+        vel: new THREE.Vector3((Math.random() - 0.5) * 1.2, 2.8 + Math.random() * 1.5, 1.5),
+        life: 1.8,
+        maxLife: 1.8,
+        grow: 1.4
+      });
+    }
+
+    function spawnBloodParticles(x, y, z) {
+      for (let i = 0; i < 6; i++) {
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.14, 0.14, 0.14),
+          MATS.crimson
+        );
+        mesh.position.set(x, y, z);
+        scene.add(mesh);
+        state.particles.push({
+          mesh,
+          vel: new THREE.Vector3(
+            (Math.random() - 0.5) * 4.5,
+            1.5 + Math.random() * 2.5,
+            (Math.random() - 0.5) * 4.5
+          ),
+          life: 0.45,
+          maxLife: 0.45,
+          gravity: true
+        });
+      }
+    }
+
+    const floatingTextLayer = document.getElementById('floating-text-layer');
+    function spawnFloatingText(worldPos, text, color = '#fbbf24') {
+      const v = worldPos.clone().project(camera);
+      if (v.z > 1) return;
+      const x = (v.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-(v.y * 0.5) + 0.5) * window.innerHeight;
+
+      const el = document.createElement('div');
+      el.className = 'absolute font-mono font-extrabold text-xs sm:text-sm pointer-events-none transition-all duration-700';
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+      el.style.color = color;
+      el.style.textShadow = '0 1px 3px rgba(0,0,0,0.95)';
+      el.textContent = text;
+      floatingTextLayer.appendChild(el);
+
+      requestAnimationFrame(() => {
+        el.style.transform = 'translate(-50%, -36px)';
+        el.style.opacity = '0';
+      });
+      setTimeout(() => {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }, 700);
+    }
+
+    // =========================================================================
+    // 13. UI & HUD RENDERERS
+    // =========================================================================
+    let toastTimeout = null;
+    function showToast(msg) {
+      const el = document.getElementById('hud-toast');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => el.classList.add('hidden'), 3200);
+    }
+
+    let bannerTimeout = null;
+    function showEventBanner(msg) {
+      const el = document.getElementById('hud-event-banner');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      if (bannerTimeout) clearTimeout(bannerTimeout);
+      bannerTimeout = setTimeout(() => el.classList.add('hidden'), 5500);
+    }
+
+    function showHitmarker() {
+      const hm = document.getElementById('hud-hitmarker');
+      hm.classList.remove('hidden');
+      setTimeout(() => hm.classList.add('hidden'), 110);
+    }
+
+    function updateTopHUD() {
+      const hpPct = Math.max(0, Math.round((state.train.hp / state.train.maxHp) * 100));
+      const filledBlocks = Math.round(hpPct / 10);
+      const asciiBar = '█'.repeat(filledBlocks) + '░'.repeat(10 - filledBlocks);
+      document.getElementById('hud-train-hp-ascii').textContent = `TRAIN HP: ${asciiBar} ${hpPct}%`;
+      document.getElementById('hud-train-hp-bar').style.width = `${hpPct}%`;
+
+      const fuelPct = Math.max(0, Math.round(state.train.fuel));
+      document.getElementById('hud-train-fuel-text').textContent = `${fuelPct}%`;
+      document.getElementById('hud-train-fuel-bar').style.width = `${fuelPct}%`;
+
+      const badge = document.getElementById('hud-train-state-badge');
+      if (state.train.blockedByBarricade) {
+        badge.textContent = 'TRACK BLOCKED';
+        badge.className = 'px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-red-900 text-red-100 border border-red-400';
+      } else if (state.train.throttle && state.train.fuel > 0) {
+        badge.textContent = 'STEAMING';
+        badge.className = 'px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-emerald-900 text-emerald-200 border border-emerald-500';
+      } else {
+        badge.textContent = 'STOPPED';
+        badge.className = 'px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-amber-900/80 text-amber-200 border border-amber-600/50';
+      }
+
+      const mph = (state.train.speed * 2.2).toFixed(1);
+      document.getElementById('hud-train-speed').textContent = `${mph} mph`;
+
+      const distTraveled = Math.max(0, Math.round(-state.train.z));
+      document.getElementById('hud-distance-text').textContent = `${distTraveled}m / ${state.targetDistance}m`;
+      const distPct = Math.min(100, (distTraveled / state.targetDistance) * 100);
+      document.getElementById('hud-distance-bar').style.width = `${distPct}%`;
+
+      document.getElementById('hud-money-text').textContent = `$${state.player.money}`;
+      document.getElementById('hud-kills-text').textContent = `${state.player.kills}`;
+
+      const pHp = Math.max(0, Math.round(state.player.hp));
+      document.getElementById('hud-player-hp-text').textContent = `${pHp} / ${state.player.maxHp}`;
+      document.getElementById('hud-player-hp-bar').style.width = `${pHp}%`;
+
+      const pStam = Math.max(0, Math.round(state.player.stamina));
+      document.getElementById('hud-player-stamina-text').textContent = `${pStam}%`;
+      document.getElementById('hud-player-stamina-bar').style.width = `${pStam}%`;
+
+      document.getElementById('hud-stance-label').textContent =
+        `Stance: ${state.player.crouching ? 'Crouched' : 'Standing'} ${state.player.onTrain ? '(On Train)' : '(On Foot)'}`;
+
+      if (state.activeBoss) {
+        const b = state.activeBoss;
+        const bPct = Math.max(0, (b.hp / b.maxHp) * 100);
+        document.getElementById('hud-boss-hp-text').textContent = `${Math.max(0, b.hp)} / ${b.maxHp}`;
+        document.getElementById('hud-boss-hp-bar').style.width = `${bPct}%`;
+      }
+    }
+
+    function updateWeaponHUD() {
+      const w = WEAPONS[state.player.currentWeapon];
+      document.getElementById('hud-weapon-name').textContent = w.name;
+      document.getElementById('hud-weapon-tier').textContent = `TIER ${state.player.weaponTier}`;
+      document.getElementById('hud-ammo-mag').textContent = w.mag === Infinity ? '∞' : w.mag;
+      document.getElementById('hud-ammo-reserve').textContent = w.reserve === Infinity ? '∞' : w.reserve;
+
+      const reloadBadge = document.getElementById('hud-reload-badge');
+      if (state.player.reloading) reloadBadge.classList.remove('hidden');
+      else reloadBadge.classList.add('hidden');
+
+      document.querySelectorAll('.weapon-slot-btn').forEach((btn, idx) => {
+        const sw = WEAPONS[idx];
+        const slotAmmoEl = document.getElementById(`slot-ammo-${idx}`);
+        if (slotAmmoEl) {
+          slotAmmoEl.textContent = sw.mag === Infinity ? 'Melee' : `${sw.mag}/${sw.reserve}`;
+        }
+        if (idx === state.player.currentWeapon) {
+          btn.classList.add('border-amber-400', 'ring-1', 'ring-amber-400');
+          btn.classList.remove('opacity-80');
+        } else {
+          btn.classList.remove('border-amber-400', 'ring-1', 'ring-amber-400');
+          btn.classList.add('opacity-80');
+        }
+      });
+    }
+
+    function renderInventoryModal() {
+      const inv = state.player.inventory;
+      document.getElementById('inv-count-text').textContent = `${inv.length} / ${state.player.maxInventory}`;
+      document.getElementById('inv-fuel-val').textContent = `${Math.round(state.train.fuel)}%`;
+      document.getElementById('inv-hull-val').textContent = `${Math.round(state.train.hp)}%`;
+      const scrapCount = inv.filter((i) => i.repair).length;
+      document.getElementById('inv-scrap-val').textContent = `${scrapCount} units`;
+      document.getElementById('inv-upgrade-val').textContent =
+        `Tier ${state.player.weaponTier} (+${(state.player.weaponTier - 1) * 22}%)`;
+
+      const grid = document.getElementById('inventory-grid');
+      grid.innerHTML = '';
+
+      if (inv.length === 0) {
+        grid.innerHTML = `
+          <div class="col-span-full text-center py-8 text-amber-200/60 text-xs">
+            Your Saddlebag is empty. Explore abandoned buildings along the railway and press [E] to collect supplies.
+          </div>
+        `;
+        return;
+      }
+
+      inv.forEach((item, index) => {
+        const card = document.createElement('div');
+        card.className = 'bg-stone-900/95 border border-amber-800/80 rounded-lg p-3 flex flex-col justify-between';
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between gap-1 mb-1">
+              <span class="px-1.5 py-0.5 rounded bg-amber-900/90 text-amber-200 text-[10px] font-bold">${item.badge || 'ITEM'}</span>
+              <span class="text-[11px] font-mono text-emerald-400">Val: $${item.value || 15}</span>
+            </div>
+            <div class="font-bold text-xs text-amber-100">${item.name}</div>
+            <div class="text-[11px] text-amber-200/75 mt-0.5">${item.desc}</div>
+          </div>
+          <div class="flex items-center gap-1.5 mt-3 pt-2 border-t border-amber-900/50">
+            <button data-use="${index}" class="western-btn flex-1 py-1 rounded text-[11px] font-bold">Use / Apply</button>
+            <button data-drop="${index}" class="western-btn-secondary px-2 py-1 rounded text-[11px]">Drop</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+
+      grid.querySelectorAll('[data-use]').forEach((btn) => {
+        btn.addEventListener('click', () => useInventoryItem(parseInt(btn.getAttribute('data-use'), 10)));
+      });
+      grid.querySelectorAll('[data-drop]').forEach((btn) => {
+        btn.addEventListener('click', () => dropInventoryItem(parseInt(btn.getAttribute('data-drop'), 10)));
+      });
+    }
+
+    function renderShopModal() {
+      document.getElementById('shop-money-text').textContent = `$${state.player.money}`;
+      const grid = document.getElementById('shop-items-grid');
+      grid.innerHTML = '';
+
+      SHOP_CATALOG.forEach((offer) => {
+        const canAfford = state.player.money >= offer.price;
+        const card = document.createElement('div');
+        card.className = 'bg-stone-900/95 border border-amber-800/80 rounded-lg p-3 flex flex-col justify-between';
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-bold text-xs sm:text-sm text-amber-200">${offer.name}</span>
+              <span class="font-western text-sm text-amber-400">$${offer.price}</span>
+            </div>
+            <p class="text-[11px] text-amber-100/75 mt-1">${offer.desc}</p>
+          </div>
+          <button data-buy="${offer.id}" ${canAfford ? '' : 'disabled'} class="western-btn mt-3 py-1.5 rounded text-xs font-bold w-full">
+            ${canAfford ? `Purchase ($${offer.price})` : `Need $${offer.price}`}
+          </button>
+        `;
+        grid.appendChild(card);
+      });
+
+      grid.querySelectorAll('[data-buy]').forEach((btn) => {
+        btn.addEventListener('click', () => buyShopOffer(btn.getAttribute('data-buy')));
+      });
+    }
+
+    function buyShopOffer(offerId) {
+      const offer = SHOP_CATALOG.find((o) => o.id === offerId);
+      if (!offer || state.player.money < offer.price) return;
+      state.player.money -= offer.price;
+      sfx.playLoot(true);
+
+      if (offer.action === 'fuel') {
+        state.train.fuel = Math.min(state.train.maxFuel, state.train.fuel + offer.amount);
+        showToast('🚂 Purchased Coal Sack (+30% Locomotive Fuel)!');
+      } else if (offer.action === 'ammo') {
+        WEAPONS[0].reserve += 24;
+        WEAPONS[1].reserve += 16;
+        WEAPONS[2].reserve += 8;
+        WEAPONS[3].reserve += 8;
+        showToast('Purchased Bandolier Ammo Bundle!');
+      } else if (offer.action === 'medkit') {
+        if (state.player.hp < state.player.maxHp) {
+          state.player.hp = Math.min(state.player.maxHp, state.player.hp + 65);
+          showToast('💊 Healed +65 Outlaw Health!');
+        } else if (state.player.inventory.length < state.player.maxInventory) {
+          state.player.inventory.push(Object.assign({}, LOOT_TYPES[3]));
+          showToast('💊 Medkit added to Saddlebag!');
+        }
+      } else if (offer.action === 'repair') {
+        state.train.hp = Math.min(state.train.maxHp, state.train.hp + offer.amount);
+        showToast('🔧 Reinforced Train Hull (+35% HP)!');
+      } else if (offer.action === 'upgrade') {
+        state.player.weaponTier++;
+        showToast(`⚡ Upgraded Firearms to Tier ${state.player.weaponTier}!`);
+      } else if (offer.action === 'reinforce') {
+        state.train.hp = Math.min(state.train.maxHp, state.train.hp + 40);
+        state.enemies.slice().forEach((en) => {
+          if (Math.abs(en.group.position.z - state.train.z) < 25) {
+            damageEnemy(en, 180, false);
+          }
+        });
+        sfx.playWhistle();
+        showToast('🔔 Steam Guard Bell & Armor activated!');
+      }
+
+      renderShopModal();
+      updateTopHUD();
+      updateWeaponHUD();
+    }
+
+    // =========================================================================
+    // 14. DAY / NIGHT CYCLE & RANDOM EVENTS SYSTEM
+    // =========================================================================
+    function updateDayNightCycle(dt) {
+      state.timeOfDay += dt * 0.12;
+      if (state.timeOfDay >= 24) {
+        state.timeOfDay -= 24;
+        state.dayCount++;
+      }
+
+      const hour = state.timeOfDay;
+      const hrInt = Math.floor(hour);
+      const minInt = Math.floor((hour - hrInt) * 60);
+      const timeStr = `${String(hrInt).padStart(2, '0')}:${String(minInt).padStart(2, '0')}`;
+
+      const angle = ((hour - 6) / 24) * Math.PI * 2;
+      const sunElev = Math.sin(angle);
+      const dayFactor = Math.max(0, Math.min(1, (sunElev + 0.2) / 1.1));
+
+      const isNight = sunElev < -0.05;
+      const isSunset = Math.abs(sunElev) <= 0.25;
+
+      const timeLabel = document.getElementById('hud-time-label');
+      timeLabel.textContent = `${isNight ? '🌙 NIGHT' : isSunset ? '🌅 DUSK/DAWN' : '☀️ DAY'} ${state.dayCount} — ${timeStr}`;
+
+      const nightColor = new THREE.Color(0x090d16);
+      const sunsetColor = new THREE.Color(0xb45309);
+      const dayColor = new THREE.Color(0xd99b66);
+
+      const currentSky = new THREE.Color();
+      if (dayFactor < 0.45) {
+        currentSky.lerpColors(nightColor, sunsetColor, dayFactor / 0.45);
+      } else {
+        currentSky.lerpColors(sunsetColor, dayColor, (dayFactor - 0.45) / 0.55);
+      }
+
+      scene.background.copy(currentSky);
+      scene.fog.color.copy(currentSky);
+      scene.fog.density = isNight ? 0.0095 : 0.0052;
+
+      skyGroup.position.set(0, 0, state.player.pos.z);
+      const orbitR = 190;
+      sunMesh.position.set(Math.cos(angle) * orbitR, Math.sin(angle) * orbitR, -50);
+      moonMesh.position.set(-Math.cos(angle) * orbitR, -Math.sin(angle) * orbitR, -50);
+
+      starMat.opacity = Math.max(0, 1 - dayFactor * 2.1);
+      hemiLight.intensity = 0.22 + dayFactor * 0.55;
+      sunLight.intensity = Math.max(0.08, dayFactor * 1.15);
+      sunLight.position.set(state.player.pos.x + 50, 85, state.player.pos.z + 40);
+      sunLight.target.position.set(state.player.pos.x, 0, state.player.pos.z);
+
+      const headLight = trainGroup.userData.headlight;
+      if (headLight) {
+        headLight.intensity = state.train.headlightOn ? (isNight ? 3.8 : 1.8) : 0;
+      }
+      if (playerModel.personalLight) {
+        playerModel.personalLight.intensity = state.player.personalLamp ? (isNight ? 1.4 : 0.5) : 0;
+      }
+    }
+
+    function checkRandomEvents() {
+      const dist = Math.max(0, -state.train.z);
+
+      if (!state.bossSpawnedMid && dist >= Math.min(1450, state.targetDistance * 0.5)) {
+        state.bossSpawnedMid = true;
+        spawnEnemy(-10, state.train.z - 42, 'boss');
+        spawnEnemy(10, state.train.z - 38, 'gunslinger');
+        sfx.playWhistle();
+        showEventBanner('💀 BOSS ENCOUNTER: BRIMSTONE JACK BLOCKS THE CANYON PASS!');
+        return;
+      }
+
+      if (!state.bossSpawnedFinal && dist >= state.targetDistance - 110) {
+        state.bossSpawnedFinal = true;
+        if (!state.activeBoss) {
+          spawnEnemy(0, state.train.z - 36, 'boss');
+        }
+        spawnEnemy(-12, state.train.z - 32, 'brute');
+        spawnEnemy(12, state.train.z - 32, 'gunslinger');
+        showEventBanner('🏰 FINAL STAND AT FORT REDEMPTION! REACH THE GATES!');
+        return;
+      }
+
+      if (dist - state.lastRandomEventDist >= 320) {
+        state.lastRandomEventDist = dist;
+        const roll = Math.random();
+        if (roll < 0.35) {
+          showEventBanner('⚠️ RANDOM EVENT: COYOTE RUNNER PACK AMBUSH!');
+          for (let i = 0; i < 4; i++) {
+            spawnEnemy((i % 2 === 0 ? -1 : 1) * (9 + i * 2), state.train.z - 35 - i * 5, 'runner');
+          }
+        } else if (roll < 0.68) {
+          showEventBanner('🔫 RANDOM EVENT: OUTLAW REVENANT RAIDERS!');
+          spawnEnemy(-13, state.train.z - 30, 'gunslinger');
+          spawnEnemy(13, state.train.z - 34, 'gunslinger');
+          spawnEnemy(-9, state.train.z - 25, 'brute');
+        } else {
+          showEventBanner('📦 RANDOM EVENT: DERAILED SUPPLY DROP SPOTTED BY THE RAILS!');
+          if (state.chunks.length > 0) {
+            const ch = state.chunks[state.chunks.length - 1];
+            spawnLootItem(ch, -6.5, 0.5, state.train.z - 28, 'oil');
+            spawnLootItem(ch, 6.5, 0.5, state.train.z - 28, 'medkit');
+            spawnLootItem(ch, -6.5, 0.5, state.train.z - 31, 'gold');
+          }
+        }
+      }
+    }
+
+    // =========================================================================
+    // 15. MAIN GAME LOOP (TRAIN, PLAYER PHYSICS, AI, CAMERA, VICTORY/DEFEAT)
+    // =========================================================================
+    let lastFrameTime = performance.now();
+    let smokeAccum = 0;
+
+    function updateGame(dt) {
+      const frontNeededZ = state.train.z - CHUNK_LENGTH * 2.5;
+      while (state.chunks.length === 0 || state.chunks[state.chunks.length - 1].zEnd > frontNeededZ) {
+        generateChunk(state.nextChunkIndex++);
+      }
+
+      while (state.chunks.length > 5 && state.chunks[0].zStart > state.train.z + 240) {
+        const old = state.chunks.shift();
+        scene.remove(old.group);
+        state.obstacles = state.obstacles.filter((ob) => !old.obstacles.includes(ob));
+        state.lootItems = state.lootItems.filter((lt) => lt.chunkIndex !== old.index);
+      }
+
+      state.train.blockedByBarricade = false;
+      for (let i = 0; i < state.chunks.length; i++) {
+        const ch = state.chunks[i];
+        if (state.train.z <= ch.zStart && state.train.z >= ch.zEnd) {
+          state.currentBiomeName = ch.biome.name;
+          const bLabel = document.getElementById('hud-biome-label');
+          if (bLabel) bLabel.textContent = ch.biome.name;
+        }
+        if (ch.barricade && !ch.barricade.cleared) {
+          const distToBarricade = (state.train.z - 11.5) - ch.barricade.z;
+          if (distToBarricade > 0 && distToBarricade < 5.5) {
+            state.train.blockedByBarricade = true;
+            state.train.throttle = false;
+            state.train.speed = 0;
+          }
+        }
+      }
+
+      if (state.train.throttle && state.train.fuel > 0 && !state.train.blockedByBarricade) {
+        state.train.speed = Math.min(state.train.maxSpeed, state.train.speed + dt * 4.2);
+        state.train.fuel = Math.max(0, state.train.fuel - dt * 0.72);
+        if (state.train.fuel <= 0) {
+          state.train.throttle = false;
+          showEventBanner('⚠️ TRAIN OUT OF FUEL! STOKE COAL OR OIL INTO THE FIREBOX!');
+        }
+      } else {
+        state.train.speed = Math.max(0, state.train.speed - dt * 6.5);
+      }
+
+      const prevTrainZ = state.train.z;
+      state.train.z -= state.train.speed * dt;
+      const deltaTrainZ = state.train.z - prevTrainZ;
+      trainGroup.position.set(0, 0, state.train.z);
+
+      if (trainGroup.userData.throttleLever) {
+        trainGroup.userData.throttleLever.rotation.x = state.train.throttle ? -0.38 : 0.35;
+      }
+      const wheelRot = state.train.speed * dt * 1.45;
+      for (let i = 0; i < trainWheels.length; i++) {
+        trainWheels[i].rotation.x -= wheelRot;
+      }
+
+      const speedRatio = state.train.speed / state.train.maxSpeed;
+      sfx.playChug(speedRatio);
+      smokeAccum += dt * (state.train.throttle ? 9.5 : 2.2);
+      while (smokeAccum >= 1) {
+        smokeAccum -= 1;
+        spawnSmokeParticle();
+      }
+
+      const p = state.player;
+      const relZ = p.pos.z - state.train.z;
+      const withinTrainBounds = Math.abs(p.pos.x) <= 2.45 && relZ >= -9.8 && relZ <= 13.9;
+      p.onTrain = withinTrainBounds && p.pos.y >= 1.35;
+
+      if (p.onTrain) {
+        p.pos.z += deltaTrainZ;
+      }
+
+      let moveForward = 0;
+      let moveRight = 0;
+      if (keys['KeyW'] || keys['ArrowUp']) moveForward += 1;
+      if (keys['KeyS'] || keys['ArrowDown']) moveForward -= 1;
+      if (keys['KeyD'] || keys['ArrowRight']) moveRight += 1;
+      if (keys['KeyA'] || keys['ArrowLeft']) moveRight -= 1;
+
+      const isMoving = moveForward !== 0 || moveRight !== 0;
+      const wantsSprint = (keys['ShiftLeft'] || keys['ShiftRight']) && isMoving && !p.crouching && p.stamina > 5;
+
+      if (wantsSprint) {
+        p.stamina = Math.max(0, p.stamina - dt * 22);
+      } else {
+        p.stamina = Math.min(p.maxStamina, p.stamina + dt * 15);
+      }
+
+      const baseSpeed = p.crouching ? 4.4 : wantsSprint ? 10.6 : 6.8;
+      const forwardVec = new THREE.Vector3(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
+      const rightVec = new THREE.Vector3(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
+      const moveVec = new THREE.Vector3()
+        .addScaledVector(forwardVec, moveForward)
+        .addScaledVector(rightVec, moveRight);
+
+      if (moveVec.lengthSq() > 0.001) {
+        moveVec.normalize().multiplyScalar(baseSpeed * dt);
+        const nextX = p.pos.x + moveVec.x;
+        const nextZ = p.pos.z + moveVec.z;
+
+        if (!collidesWithObstacle(nextX, p.pos.z, 0.48)) p.pos.x = nextX;
+        if (!collidesWithObstacle(p.pos.x, nextZ, 0.48)) p.pos.z = nextZ;
+
+        p.pos.x = Math.max(-58, Math.min(58, p.pos.x));
+        sfx.playFootstep(p.onTrain);
+      }
+
+      const floorY = withinTrainBounds ? 1.52 : 0.0;
+      if (keys['Space'] && p.grounded) {
+        p.vel.y = 7.4;
+        p.grounded = false;
+      }
+      p.vel.y -= 19.5 * dt;
+      p.pos.y += p.vel.y * dt;
+
+      if (p.pos.y <= floorY) {
+        p.pos.y = floorY;
+        p.vel.y = 0;
+        p.grounded = true;
+      }
+
+      if (p.reloading) {
+        p.reloadTimer -= dt;
+        if (p.reloadTimer <= 0) {
+          p.reloading = false;
+          const w = WEAPONS[p.currentWeapon];
+          const needed = w.magSize - w.mag;
+          const load = Math.min(needed, w.reserve);
+          w.mag += load;
+          w.reserve -= load;
+          updateWeaponHUD();
+        }
+      }
+
+      p.recoilPitch = Math.max(0, p.recoilPitch - dt * 0.25);
+
+      playerGroup.position.copy(p.pos);
+      playerGroup.rotation.y = p.yaw + Math.PI;
+      playerGroup.scale.y = p.crouching ? 0.72 : 1.0;
+      playerGroup.visible = state.cameraMode === 'third';
+
+      const walkCycle = isMoving ? Math.sin(performance.now() * 0.012) * 0.55 : 0;
+      playerModel.leftLeg.rotation.x = walkCycle;
+      playerModel.rightLeg.rotation.x = -walkCycle;
+      playerModel.leftArm.rotation.x = -walkCycle * 0.6;
+
+      const effectivePitch = p.pitch + p.recoilPitch;
+      const targetFov = p.aiming ? (WEAPONS[p.currentWeapon].id === 'sharps' ? 32 : 45) : 65;
+      camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 14);
+      camera.updateProjectionMatrix();
+
+      const eyeHeight = p.crouching ? 1.35 : 1.95;
+      const lookDir = new THREE.Vector3(
+        -Math.sin(p.yaw) * Math.cos(effectivePitch),
+        Math.sin(effectivePitch),
+        -Math.cos(p.yaw) * Math.cos(effectivePitch)
+      ).normalize();
+
+      if (state.cameraMode === 'first') {
+        const camPos = new THREE.Vector3(p.pos.x, p.pos.y + eyeHeight, p.pos.z);
+        camera.position.copy(camPos);
+        camera.lookAt(camPos.clone().addScaledVector(lookDir, 20));
+      } else {
+        const shoulderRight = new THREE.Vector3(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
+        const camDist = p.aiming ? 2.1 : 4.2;
+        const shoulderOffset = p.aiming ? 0.68 : 0.82;
+        const pivot = new THREE.Vector3(p.pos.x, p.pos.y + eyeHeight + 0.25, p.pos.z)
+          .addScaledVector(shoulderRight, shoulderOffset);
+
+        const desiredCam = pivot.clone().addScaledVector(lookDir, -camDist);
+        desiredCam.y = Math.max(0.65, desiredCam.y);
+        camera.position.lerp(desiredCam, Math.min(1, dt * 18));
+        camera.lookAt(pivot.clone().addScaledVector(lookDir, 30));
+      }
+
+      const nowSec = performance.now() / 1000;
+      const isNight = state.timeOfDay < 6 || state.timeOfDay > 19.5;
+      const detectRange = isNight ? 72 : 52;
+
+      for (let i = state.enemies.length - 1; i >= 0; i--) {
+        const en = state.enemies[i];
+        const ePos = en.group.position;
+
+        if (ePos.z > state.train.z + 185 && !en.arch.isBoss) {
+          scene.remove(en.group);
+          if (en.barEl && en.barEl.parentNode) en.barEl.parentNode.removeChild(en.barEl);
+          state.enemies.splice(i, 1);
+          continue;
+        }
+
+        const distToPlayer = Math.hypot(p.pos.x - ePos.x, p.pos.z - ePos.z);
+        const distToTrain = Math.hypot(0 - ePos.x, state.train.z - ePos.z);
+
+        let targetX = p.pos.x;
+        let targetZ = p.pos.z;
+        let targetingTrain = false;
+
+        if (distToPlayer > detectRange && distToTrain > detectRange) {
+          en.barEl.classList.add('hidden');
+          continue;
+        }
+
+        if (distToTrain < distToPlayer * 0.7 || (p.onTrain && distToTrain < 8)) {
+          targetX = 0;
+          targetZ = state.train.z;
+          targetingTrain = true;
+        }
+
+        const dx = targetX - ePos.x;
+        const dz = targetZ - ePos.z;
+        const dist = Math.hypot(dx, dz);
+
+        en.group.rotation.y = Math.atan2(dx, dz);
+
+        const stopDist = en.arch.ranged && !targetingTrain ? 16.0 : en.arch.attackRange * 0.85;
+        if (dist > stopDist) {
+          const step = en.arch.speed * (isNight ? 1.15 : 1.0) * dt;
+          const nx = dx / dist;
+          const nz = dz / dist;
+
+          const tryX = ePos.x + nx * step;
+          const tryZ = ePos.z + nz * step;
+
+          if (!collidesWithObstacle(tryX, tryZ, 0.55)) {
+            ePos.x = tryX;
+            ePos.z = tryZ;
+          } else if (!collidesWithObstacle(tryX, ePos.z, 0.55)) {
+            ePos.x = tryX;
+          } else if (!collidesWithObstacle(ePos.x, tryZ, 0.55)) {
+            ePos.z = tryZ;
+          } else {
+            ePos.x += -nz * step;
+          }
+
+          en.animPhase += dt * en.arch.speed * 2.5;
+          en.legL.rotation.x = Math.sin(en.animPhase) * 0.6;
+          en.legR.rotation.x = -Math.sin(en.animPhase) * 0.6;
+        }
+
+        if (dist <= en.arch.attackRange && nowSec - en.lastAttackTime >= 1.25) {
+          en.lastAttackTime = nowSec;
+          sfx.playZombieSound(en.kind);
+
+          if (targetingTrain || (p.onTrain && en.arch.ranged && Math.random() < 0.45)) {
+            state.train.hp = Math.max(0, state.train.hp - en.arch.damage * 0.45);
+            if (state.train.hp <= 0) {
+              triggerEndgame(false, 'The Iron Horse locomotive hull was breached and destroyed by the undead horde!');
+              return;
+            }
+          } else if (distToPlayer <= en.arch.attackRange + 0.8) {
+            const hitChance = en.arch.ranged ? (p.crouching ? 0.55 : 0.75) : 1.0;
+            if (Math.random() <= hitChance) {
+              damagePlayer(en.arch.damage);
+              if (state.gameOver) return;
+            }
+          }
+        }
+
+        if (distToPlayer < 42 && (en.hp < en.maxHp || distToPlayer < 18)) {
+          const barWorld = ePos.clone().add(new THREE.Vector3(0, 2.55 * en.arch.scale, 0));
+          const proj = barWorld.project(camera);
+          if (proj.z < 1) {
+            const sx = (proj.x * 0.5 + 0.5) * window.innerWidth;
+            const sy = (-(proj.y * 0.5) + 0.5) * window.innerHeight;
+            en.barEl.style.left = `${sx}px`;
+            en.barEl.style.top = `${sy}px`;
+            en.barFillEl.style.width = `${Math.max(0, (en.hp / en.maxHp) * 100)}%`;
+            en.barEl.classList.remove('hidden');
+          } else {
+            en.barEl.classList.add('hidden');
+          }
+        } else {
+          en.barEl.classList.add('hidden');
+        }
+      }
+
+      const maxAmbientEnemies = isNight ? 14 : 9;
+      if (state.enemies.length < maxAmbientEnemies && Math.random() < dt * (isNight ? 0.65 : 0.28)) {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const sx = side * (16 + Math.random() * 20);
+        const sz = state.train.z - 25 - Math.random() * 45;
+        const kinds = isNight ? ['walker', 'runner', 'runner', 'brute', 'gunslinger'] : ['walker', 'walker', 'runner'];
+        spawnEnemy(sx, sz, kinds[Math.floor(Math.random() * kinds.length)]);
+      }
+
+      for (let i = state.particles.length - 1; i >= 0; i--) {
+        const pt = state.particles[i];
+        pt.life -= dt;
+        if (pt.life <= 0) {
+          scene.remove(pt.mesh);
+          state.particles.splice(i, 1);
+          continue;
+        }
+        if (pt.gravity) pt.vel.y -= 12 * dt;
+        pt.mesh.position.addScaledVector(pt.vel, dt);
+        if (pt.grow) {
+          pt.mesh.scale.addScalar(dt * pt.grow);
+          pt.mesh.material.opacity = (pt.life / pt.maxLife) * 0.6;
+        }
+      }
+
+      const ctx = getNearestContextAction();
+      const promptEl = document.getElementById('hud-interact-prompt');
+      if (ctx) {
+        promptEl.innerHTML = `Press <span class="px-1.5 py-0.5 bg-amber-800 text-white rounded font-mono font-bold">[E]</span> to ${ctx.label}`;
+        promptEl.classList.remove('hidden');
+      } else {
+        promptEl.classList.add('hidden');
+      }
+
+      const objEl = document.getElementById('hud-objective-text');
+      const distRemaining = Math.max(0, Math.round(state.targetDistance - (-state.train.z)));
+      if (state.train.blockedByBarricade) {
+        objEl.textContent = '⚠️ TRACK BARRICADED! Step off the train and press [E] on the wooden barricade ahead to clear the rails!';
+      } else if (state.train.fuel <= 15) {
+        objEl.textContent = '⚠️ LOW STEAM FUEL! Stop near buildings, scavenge Coal/Oil, and stoke the firebox [E].';
+      } else if (state.activeBoss) {
+        objEl.textContent = '💀 BOSS BATTLE: Defeat Brimstone Jack, The Undead Marshall!';
+      } else {
+        objEl.textContent = `Objective: Keep the train steamed and reach Fort Redemption (${distRemaining}m remaining). Current region: ${state.currentBiomeName}`;
+      }
+
+      updateDayNightCycle(dt);
+      checkRandomEvents();
+      updateTopHUD();
+
+      if (-state.train.z >= state.targetDistance) {
+        triggerEndgame(true, 'You piloted the Iron Horse across the cursed Sundown Line and reached the fortified gates of Fort Redemption!');
+      }
+    }
+
+    function damagePlayer(amount) {
+      state.player.hp = Math.max(0, state.player.hp - amount);
+      const vig = document.getElementById('damage-vignette');
+      vig.style.opacity = '0.85';
+      setTimeout(() => {
+        vig.style.opacity = state.player.hp < 30 ? '0.45' : '0';
+      }, 240);
+
+      updateTopHUD();
+      if (state.player.hp <= 0) {
+        triggerEndgame(false, 'You succumbed to your wounds in the scorching wasteland.');
+      }
+    }
+
+    function triggerEndgame(isVictory, reasonText) {
+      state.paused = true;
+      state.gameOver = !isVictory;
+      state.victory = isVictory;
+      if (document.exitPointerLock) {
+        try { document.exitPointerLock(); } catch (_) {}
+      }
+
+      const modal = document.getElementById('endgame-modal');
+      const badge = document.getElementById('endgame-badge');
+      const title = document.getElementById('endgame-title');
+
+      if (isVictory) {
+        badge.textContent = 'SANCTUARY REACHED';
+        badge.className = 'inline-block px-3 py-1 rounded-full bg-emerald-950 border border-emerald-500 text-emerald-200 text-xs font-bold uppercase tracking-widest mb-2';
+        title.textContent = 'VICTORY!';
+        title.className = 'font-western text-3xl sm:text-4xl text-emerald-400 mb-2';
+        sfx.playWhistle();
+      } else {
+        badge.textContent = 'EXPEDITION LOST';
+        badge.className = 'inline-block px-3 py-1 rounded-full bg-red-950 border border-red-500 text-red-200 text-xs font-bold uppercase tracking-widest mb-2';
+        title.textContent = 'GAME OVER';
+        title.className = 'font-western text-3xl sm:text-4xl text-red-400 mb-2';
+      }
+
+      document.getElementById('endgame-reason').textContent = reasonText;
+      document.getElementById('endgame-stat-dist').textContent = `${Math.max(0, Math.round(-state.train.z))}m`;
+      document.getElementById('endgame-stat-kills').textContent = `${state.player.kills}`;
+      document.getElementById('endgame-stat-cash').textContent = `$${state.player.money}`;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function resetAndStartGame() {
+      state.chunks.forEach((ch) => scene.remove(ch.group));
+      state.enemies.forEach((en) => {
+        scene.remove(en.group);
+        if (en.barEl && en.barEl.parentNode) en.barEl.parentNode.removeChild(en.barEl);
+      });
+      state.particles.forEach((pt) => scene.remove(pt.mesh));
+
+      state.chunks = [];
+      state.obstacles = [];
+      state.lootItems = [];
+      state.enemies = [];
+      state.particles = [];
+      state.nextChunkIndex = 0;
+      state.activeBoss = null;
+      state.bossSpawnedMid = false;
+      state.bossSpawnedFinal = false;
+      state.lastRandomEventDist = 180;
+      document.getElementById('hud-boss-container').classList.add('hidden');
+
+      state.train.z = 0;
+      state.train.speed = 0;
+      state.train.throttle = false;
+      state.train.fuel = 80;
+      state.train.hp = 100;
+      state.train.headlightOn = true;
+      state.train.blockedByBarricade = false;
+      trainGroup.position.set(0, 0, 0);
+
+      state.player.pos.set(0, 1.55, 1.0);
+      state.player.vel.set(0, 0, 0);
+      state.player.yaw = 0;
+      state.player.pitch = -0.06;
+      state.player.hp = 100;
+      state.player.stamina = 100;
+      state.player.crouching = false;
+      state.player.onTrain = true;
+      state.player.currentWeapon = 0;
+      state.player.weaponTier = 1;
+      state.player.reloading = false;
+      state.player.money = 65;
+      state.player.kills = 0;
+      state.player.inventory = [
+        { type: 'coal', name: 'Anthracite Coal Sack', desc: '+25% Locomotive Steam Fuel', value: 18, fuel: 25, badge: 'FUEL' },
+        { type: 'medkit', name: 'Doc Holliday Medkit', desc: 'Restores +65 Outlaw Health', value: 28, heal: 65, badge: 'HEAL' },
+        { type: 'scrap', name: 'Boiler Scrap Iron', desc: 'Repairs +25% Train Hull Armor', value: 20, repair: 25, badge: 'REPAIR' }
+      ];
+
+      WEAPONS[0].mag = 6; WEAPONS[0].reserve = 36;
+      WEAPONS[1].mag = 10; WEAPONS[1].reserve = 30;
+      WEAPONS[2].mag = 2; WEAPONS[2].reserve = 16;
+      WEAPONS[3].mag = 5; WEAPONS[3].reserve = 15;
+
+      generateChunk(state.nextChunkIndex++);
+      generateChunk(state.nextChunkIndex++);
+      generateChunk(state.nextChunkIndex++);
+
+      state.gameOver = false;
+      state.victory = false;
+      state.paused = false;
+      state.running = true;
+
+      document.getElementById('damage-vignette').style.opacity = '0';
+      document.getElementById('menu-modal').classList.add('hidden');
+      document.getElementById('endgame-modal').classList.add('hidden');
+      document.getElementById('endgame-modal').classList.remove('flex');
+      document.getElementById('hud-overlay').classList.remove('hidden');
+      document.getElementById('hud-overlay').classList.add('flex');
+      document.getElementById('btn-restart-game').classList.remove('hidden');
+      document.getElementById('btn-start-game').textContent = 'RESUME EXPEDITION';
+
+      updatePlayerWeaponModel();
+      updateWeaponHUD();
+      updateTopHUD();
+      sfx.init();
+      sfx.playWhistle();
+      showToast('🤠 Welcome aboard Iron Horse #09! Press [F] or interact [E] with the throttle lever to depart.');
+    }
+
+    // =========================================================================
+    // 16. UI MODAL & BUTTON LISTENERS
+    // =========================================================================
+    function togglePauseMenu() {
+      if (state.gameOver || state.victory) return;
+      const menuModal = document.getElementById('menu-modal');
+      const invModal = document.getElementById('inventory-modal');
+      const shopModal = document.getElementById('shop-modal');
+
+      if (!invModal.classList.contains('hidden')) {
+        invModal.classList.add('hidden');
+        invModal.classList.remove('flex');
+        return;
+      }
+      if (!shopModal.classList.contains('hidden')) {
+        shopModal.classList.add('hidden');
+        shopModal.classList.remove('flex');
+        return;
+      }
+
+      state.paused = !state.paused;
+      if (state.paused) {
+        menuModal.classList.remove('hidden');
+        if (document.exitPointerLock) {
+          try { document.exitPointerLock(); } catch (_) {}
+        }
+      } else {
+        menuModal.classList.add('hidden');
+      }
+    }
+
+    function toggleInventoryModal() {
+      const invModal = document.getElementById('inventory-modal');
+      const shopModal = document.getElementById('shop-modal');
+      shopModal.classList.add('hidden');
+      shopModal.classList.remove('flex');
+
+      const opening = invModal.classList.contains('hidden');
+      if (opening) {
+        renderInventoryModal();
+        invModal.classList.remove('hidden');
+        invModal.classList.add('flex');
+        if (document.exitPointerLock) {
+          try { document.exitPointerLock(); } catch (_) {}
+        }
+      } else {
+        invModal.classList.add('hidden');
+        invModal.classList.remove('flex');
+      }
+    }
+
+    function toggleShopModal() {
+      const shopModal = document.getElementById('shop-modal');
+      const invModal = document.getElementById('inventory-modal');
+      invModal.classList.add('hidden');
+      invModal.classList.remove('flex');
+
+      const opening = shopModal.classList.contains('hidden');
+      if (opening) {
+        renderShopModal();
+        shopModal.classList.remove('hidden');
+        shopModal.classList.add('flex');
+        if (document.exitPointerLock) {
+          try { document.exitPointerLock(); } catch (_) {}
+        }
+      } else {
+        shopModal.classList.add('hidden');
+        shopModal.classList.remove('flex');
+      }
+    }
+
+    function switchMenuTab(tabName) {
+      ['main', 'instructions', 'settings'].forEach((t) => {
+        const panel = document.getElementById(`menu-tab-${t}`);
+        const btn = document.getElementById(`tab-btn-${t}`);
+        if (t === tabName) {
+          panel.classList.remove('hidden');
+          btn.className = 'western-btn px-4 py-1.5 rounded text-xs sm:text-sm font-bold';
+        } else {
+          panel.classList.add('hidden');
+          btn.className = 'western-btn-secondary px-4 py-1.5 rounded text-xs sm:text-sm font-bold';
+        }
+      });
+    }
+
+    document.getElementById('tab-btn-main').addEventListener('click', () => switchMenuTab('main'));
+    document.getElementById('tab-btn-instructions').addEventListener('click', () => switchMenuTab('instructions'));
+    document.getElementById('tab-btn-settings').addEventListener('click', () => switchMenuTab('settings'));
+
+    document.getElementById('btn-start-game').addEventListener('click', () => {
+      if (!state.running) resetAndStartGame();
+      else togglePauseMenu();
+    });
+    document.getElementById('btn-restart-game').addEventListener('click', () => resetAndStartGame());
+    document.getElementById('btn-endgame-restart').addEventListener('click', () => resetAndStartGame());
+    document.getElementById('btn-endgame-menu').addEventListener('click', () => {
+      document.getElementById('endgame-modal').classList.add('hidden');
+      document.getElementById('endgame-modal').classList.remove('flex');
+      document.getElementById('menu-modal').classList.remove('hidden');
+    });
+
+    document.getElementById('btn-hud-throttle').addEventListener('click', () => toggleTrainThrottle());
+    document.getElementById('btn-hud-whistle').addEventListener('click', () => {
+      sfx.playWhistle();
+      showToast('🚂 Steam Whistle blown!');
+    });
+    document.getElementById('btn-hud-headlight').addEventListener('click', () => {
+      state.train.headlightOn = !state.train.headlightOn;
+      state.player.personalLamp = state.train.headlightOn;
+      showToast(state.train.headlightOn ? '🔦 Headlight ON' : '🔦 Headlight OFF');
+    });
+    document.getElementById('btn-hud-cam').addEventListener('click', () => {
+      state.cameraMode = state.cameraMode === 'third' ? 'first' : 'third';
+      document.getElementById('setting-camera-mode').value = state.cameraMode;
+    });
+    document.getElementById('btn-hud-inventory').addEventListener('click', () => toggleInventoryModal());
+    document.getElementById('btn-hud-shop').addEventListener('click', () => toggleShopModal());
+    document.getElementById('btn-hud-mute').addEventListener('click', (e) => {
+      sfx.enabled = !sfx.enabled;
+      document.getElementById('setting-sound-enabled').checked = sfx.enabled;
+      e.currentTarget.textContent = sfx.enabled ? '🔊' : '🔇';
+    });
+    document.getElementById('btn-hud-pause').addEventListener('click', () => togglePauseMenu());
+    document.getElementById('btn-hud-heal').addEventListener('click', () => useQuickHeal());
+    document.getElementById('btn-hud-shoot').addEventListener('click', () => fireCurrentWeapon());
+    document.getElementById('btn-hud-aim').addEventListener('click', () => {
+      state.player.aiming = !state.player.aiming;
+      document.getElementById('aim-vignette').style.opacity = state.player.aiming ? '1' : '0';
+    });
+    document.getElementById('btn-hud-reload').addEventListener('click', () => triggerReload());
+    document.getElementById('btn-hud-interact').addEventListener('click', () => handleContextInteract());
+
+    document.querySelectorAll('.weapon-slot-btn').forEach((btn) => {
+      btn.addEventListener('click', () => selectWeapon(parseInt(btn.getAttribute('data-slot'), 10)));
+    });
+
+    document.getElementById('btn-close-inventory').addEventListener('click', () => toggleInventoryModal());
+    document.getElementById('btn-inv-refuel-all').addEventListener('click', () => {
+      let added = 0;
+      for (let i = state.player.inventory.length - 1; i >= 0; i--) {
+        if (state.player.inventory[i].fuel && state.train.fuel < state.train.maxFuel) {
+          state.train.fuel = Math.min(state.train.maxFuel, state.train.fuel + state.player.inventory[i].fuel);
+          added += state.player.inventory[i].fuel;
+          state.player.inventory.splice(i, 1);
+        }
+      }
+      if (added > 0) {
+        sfx.playLoot(false);
+        showToast(`🔥 Stoked +${added}% Steam Fuel into the locomotive!`);
+        renderInventoryModal();
+        updateTopHUD();
+      } else {
+        showToast('No fuel items in bag or locomotive tank is already full.');
+      }
+    });
+
+    document.getElementById('btn-inv-repair-all').addEventListener('click', () => repairTrainFromBag());
+    document.getElementById('btn-close-shop').addEventListener('click', () => toggleShopModal());
+    document.getElementById('btn-shop-sell-valuables').addEventListener('click', () => {
+      let earned = 0;
+      for (let i = state.player.inventory.length - 1; i >= 0; i--) {
+        if (state.player.inventory[i].cash || state.player.inventory[i].type === 'gold') {
+          earned += state.player.inventory[i].value || 55;
+          state.player.inventory.splice(i, 1);
+        }
+      }
+      if (earned > 0) {
+        state.player.money += earned;
+        sfx.playLoot(true);
+        showToast(`💰 Sold gold & valuables for +$${earned}!`);
+        renderShopModal();
+        updateTopHUD();
+      } else {
+        showToast('No Gold Bullion in Saddlebag to sell.');
+      }
+    });
+
+    document.getElementById('setting-camera-mode').addEventListener('change', (e) => {
+      state.cameraMode = e.target.value;
+    });
+    document.getElementById('setting-sensitivity').addEventListener('input', (e) => {
+      state.sensitivity = parseFloat(e.target.value) || 1.0;
+    });
+    document.getElementById('setting-target-distance').addEventListener('change', (e) => {
+      state.targetDistance = parseInt(e.target.value, 10) || 3000;
+      updateTopHUD();
+    });
+    document.getElementById('setting-sound-enabled').addEventListener('change', (e) => {
+      sfx.enabled = e.target.checked;
+      document.getElementById('btn-hud-mute').textContent = sfx.enabled ? '🔊' : '🔇';
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    generateChunk(state.nextChunkIndex++);
+    generateChunk(state.nextChunkIndex++);
+    camera.position.set(11, 5.5, 14);
+    camera.lookAt(0, 2.5, -10);
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+      lastFrameTime = now;
+
+      if (!state.paused && state.running && !state.gameOver && !state.victory) {
+        updateGame(dt);
+      } else if (!state.running) {
+        const t = now * 0.00035;
+        camera.position.set(Math.sin(t) * 14, 4.8, Math.cos(t) * 14 - 2);
+        camera.lookAt(0, 2.2, -3);
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    window.onload = () => {
+      requestAnimationFrame(animate);
+    };
+  })();
+  </script>
+</body>
+</html>
